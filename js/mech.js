@@ -252,8 +252,7 @@ export class Mech {
     this.root.updateMatrixWorld(true);
     this.shared.uBodyInv.value.copy(this.body.matrixWorld).invert();
     this.shared.uTime.value += dt;
-    this.shared.uFlash.value = Math.max(0, this.shared.uFlash.value - dt * 6);
-    if (!this.ink) for (const mt of this.mats.values()) if (mt.emissiveIntensity === 1) mt.emissive.setScalar(this.shared.uFlash.value * 0.8);
+    this.updateFlash(dt);
     if ((a[8] === 1) !== this.phantomOn) this.setPhantom(a[8] === 1);
     this.boost = a[9]; this.ki = a[10];
     this.net = { heat: a[11], core: a[12], integ: a[13] };
@@ -263,10 +262,9 @@ export class Mech {
   // intent: { move: Vector3 (world xz, length<=1), face: yaw or null, jump, hover, dash: Vector3|null }
   update(dt, intent) {
     if (this.dead) { this.updateDeath(dt); return; }
-    this.shared.uFlash.value = Math.max(0, this.shared.uFlash.value - dt * 6);
     this.shared.uTime.value += dt;
+    this.updateFlash(dt);
     this.updatePhantom(dt);
-    if (!this.ink) for (const mt of this.mats.values()) if (mt.emissiveIntensity === 1) mt.emissive.setScalar(this.shared.uFlash.value * 0.8);
     this.iframe = Math.max(0, this.iframe - dt);
     this.stun = Math.max(0, this.stun - dt);
     this.hitT = Math.max(0, this.hitT - dt);
@@ -311,7 +309,7 @@ export class Mech {
     } else {
       const want = _v.copy(it.move || _v.set(0, 0, 0)).setY(0);
       if (ground && this.legs.length >= CFG.walk.minLegs) {
-        want.multiplyScalar(S.walk * k);
+        want.multiplyScalar(S.walk * k * (1 - (1 - CFG.walk.crouchSpeed) * (this.crouchK || 0)));
         this.approach(want, 34, dt);
       } else if (ground && this.wheels.length >= CFG.wheel.minWheels) {
         const along = want.dot(fwd) * S.roll * k;
@@ -350,7 +348,12 @@ export class Mech {
     if (r > R) { this.pos.x *= R / r; this.pos.z *= R / r; }
     // body height: legs keep knees soft; bob a little while walking
     this.updateSlump(dt);
-    const crouch = this.legs.length >= CFG.walk.minLegs ? CFG.walk.crouch * this.stats.legLen : 0;
+    // squat (C): only on legs; the knees bend through the leg IK because the feet stay planted
+    const canSquat = this.legs.length >= CFG.walk.minLegs && !this.kneel;
+    const wantK = it.crouch && canSquat && this.stun <= 0 ? 1 : 0;
+    this.crouchK = (this.crouchK || 0) + (wantK - (this.crouchK || 0)) * Math.min(1, CFG.walk.crouchRate * dt);
+    const crouch = canSquat ? (CFG.walk.crouch + (CFG.walk.crouchDeep - CFG.walk.crouch) * this.crouchK) * this.stats.legLen : 0;
+    this.player.low = !!it.crouch;               // attack keys pick their squatting variant (action.low)
     this.body.position.y = -this.groundY - crouch - this.slumpCur.drop;
     this.body.rotation.z = this.slumpCur.tilt;
     this.body.updateMatrix();
@@ -548,13 +551,14 @@ export class Mech {
   damage(rec, amount, from) {
     if (!rec.alive || this.dead || this.iframe > 0) return false;
     rec.hp -= amount * (rec.tough ? CFG.grip.armor : 1);
-    this.shared.uFlash.value = 0.4;
+    this.flashPart(rec);
     this.hitT = 0.25;
     if (rec.hp <= 0) this.breakOff(rec, from);
     return true;
   }
 
   breakOff(rec, from) {
+    for (const id of subtree(this.bp, rec.id)) { const r = this.parts.get(id); if (r) this.unflash(r); }   // pieces that fall off don't keep glowing
     rec.alive = false;
     if (rec === this.coreRec) { this.die(); return; }
     const ids = subtree(this.bp, rec.id);
@@ -660,6 +664,41 @@ export class Mech {
     return true;
   }
 
+  // ----- hit flash: only the part that was hit lights up, for a moment -----
+  // It swaps that part's material for a bright copy (one copy per material, made on first use) and swaps it back.
+  flashPart(rec) {
+    if (!rec || !rec.mesh || !rec.alive) return;
+    if (!rec.flashT) {
+      const cur = rec.mesh.material;
+      if (![...this.mats.values()].includes(cur)) return;                 // phantom / special materials: leave alone
+      rec.baseMat = cur;
+      rec.mesh.material = this.flashMat(cur);
+      (this.flashing = this.flashing || new Set()).add(rec);
+    }
+    rec.flashT = CFG.hitFlash;
+  }
+  flashMat(base) {
+    this._flash = this._flash || new Map();
+    let m = this._flash.get(base);
+    if (!m) {
+      m = base.clone();
+      if (base.isShaderMaterial) m.uniforms = { ...base.uniforms, uFlash: { value: 0.45 } };   // shared uniforms stay shared
+      else { m.emissive = new THREE.Color(1, 0.92, 0.8); m.emissiveIntensity = 0.55; }
+      this._flash.set(base, m);
+    }
+    return m;
+  }
+  unflash(rec) {
+    if (!rec.flashT) return;
+    if (rec.mesh && rec.baseMat && this._flash && rec.mesh.material === this._flash.get(rec.baseMat)) rec.mesh.material = rec.baseMat;
+    rec.flashT = 0;
+    if (this.flashing) this.flashing.delete(rec);
+  }
+  updateFlash(dt) {
+    if (!this.flashing || !this.flashing.size) return;
+    for (const r of [...this.flashing]) { r.flashT -= dt; if (r.flashT <= 0) this.unflash(r); }
+  }
+
   phantomMaterial() {
     if (!this._phMat) this._phMat = this.ink
       ? inkPhantomMaterial(this.palette.armor || '#3cb4ae', this.shared)
@@ -718,6 +757,7 @@ export class Mech {
     if (this.debris) for (const d of this.debris) this.scene.remove(d.node);
     for (const m of this.mats.values()) m.dispose();
     if (this._phMat) this._phMat.dispose();
+    if (this._flash) for (const m of this._flash.values()) m.dispose();
     this.outline.dispose();
   }
 }

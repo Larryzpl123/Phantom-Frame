@@ -155,6 +155,7 @@ export function sanitize(raw) {
       next: a.next ? String(a.next).slice(0, 24) : '', window: num(a.window, 0, 2, 0.35), keys: [],
     };
     if (a.grip === false) act.grip = false;
+    if (a.low === true) act.low = true;           // squatting variant: C held + this key plays it instead
     if (a.ai && ['melee', 'ranged', 'sling', 'guard'].includes(a.ai.kind) && Array.isArray(a.ai.range)) act.ai = { kind: a.ai.kind, range: [num(a.ai.range[0], 0, 100, 0), num(a.ai.range[1], 0, 100, 10)] };
     for (const k of a.keys.slice(0, 40)) {
       const key = { t: num(k && k.t, 0, 10, 0), j: {} };

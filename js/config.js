@@ -5,6 +5,7 @@ export const CFG = {
   g: 26,                       // gravity (arcade, heavier than real so jumps feel weighty)
 
   arena: { radius: 46 },
+  hitFlash: 0.16,              // s a hit part stays lit (only that part)
   // online play (js/net.js, js/online.js). signal = the mailbox used to swap WebRTC offers: Skybreak's Worker.
   // The host runs the whole fight; guests send inputs and draw the host's snapshots, shown `delay` s behind.
   net: { signal: 'https://skybreak-lb.larryzhong.workers.dev', rate: 20, inputRate: 30, delay: 0.1, maxPlayers: 4 },
@@ -36,6 +37,9 @@ export const CFG = {
     stepTime: 0.24,            // s per swing at stock speed
     stepHeight: 0.38,          // fraction of stride used as lift
     crouch: 0.06,              // body lowered by this fraction of leg length while standing (keeps knees soft)
+    crouchDeep: 0.4,           // C held: squat this deep (fraction of leg length) to reach low targets
+    crouchSpeed: 0.5,          // walking speed while fully squatted
+    crouchRate: 7,             // how fast it gets down / up (1/s)
     jump: 10.5,                // m/s take-off speed for the stock build
     minLegs: 2,
     stanceWidth: 0.12,         // feet planted this much wider than the rest pose (m)
@@ -100,7 +104,7 @@ export const CFG = {
   ladder: {
     skillAt: [[1, 0], [5, 0.35], [10, 0.6], [15, 0.78], [20, 0.9], [25, 0.97], [30, 1]],
     skillCap: 30,
-    hpPerLevel: 0.08,
+    hpPerLevel: 0.08, lowDmg: 0.55,
     dmgPerLevel: 0.04,
     rounds: 2,                 // best of three
   },

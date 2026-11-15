@@ -78,14 +78,15 @@ export function aiSkill(level) {
     aim: lerp(0.0, 1.0, t),           // how much it leads moving targets
     wobble: lerp(0.5, 0.05, t),       // random sloppiness in movement
     hpMul: 1 + over * C.hpPerLevel,
-    dmgMul: 1 + over * C.dmgPerLevel,
+    dmgMul: (1 + over * C.dmgPerLevel) * lerp(C.lowDmg, 1, t),   // low levels also hit softer
   };
 }
 
 // which mech the ladder puts in front of you: one per tier (3 levels each), cycling through the roster order
-// opponents by tier: the presets in a rough easy-to-hard order (from bot round-robins), then any
+// opponents by tier: the presets in a rough easy-to-hard order for a human (melee duelists first; kiting gun /
+// cannon builds later, they're the hardest to learn against), then any
 // other builds on the roster in roster order
-export const LADDER_ORDER = ['磐岩', '双锋', '玄岳', '极点', '赤隼', '蛛刃'];
+export const LADDER_ORDER = ['双锋', '玄岳', '磐岩', '蛛刃', '赤隼', '极点'];
 export function ladderFoe(level, names) {
   const tier = Math.floor((Math.max(1, level) - 1) / 3);
   const order = [...LADDER_ORDER.filter(n => names.includes(n)), ...names.filter(n => !LADDER_ORDER.includes(n))];
@@ -137,6 +138,11 @@ export class AI {
     const to = new THREE.Vector3().subVectors(seen.pos, me.pos).setY(0);
     const dist = to.length(); to.normalize();
     const side = new THREE.Vector3(to.z, 0, -to.x);
+    // squat when the foe is short (tank, quadruped, a torso sitting on the floor) and close enough to swing at
+    if (foe.bodySpan && this.meleeR) {
+      const top = foe.bodySpan()[1], mine = me.center().y;
+      it.crouch = top < mine * 0.75 && dist < this.meleeR + 3;
+    }
 
     // ---- aim: lead the target with ranged builds ----
     let aimAt = seen.pos;

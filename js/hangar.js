@@ -599,6 +599,7 @@ export class Hangar {
         <div class="slide"><label>按键</label><button class="btn" data-a="bind">${this.binding ? '按下一个键…' : KEYLABEL(act.key)}</button><span></span></div>
         <div class="slide"><label>类型</label><select data-af="mode"><option value="once" ${act.mode === 'once' ? 'selected' : ''}>单次</option><option value="hold" ${act.mode === 'hold' ? 'selected' : ''}>按住保持</option><option value="idle" ${act.mode === 'idle' ? 'selected' : ''}>待机姿势</option></select><span></span></div>
         <div class="slide"><label>连招下一式</label><select data-af="next"><option value="">（无）</option>${acts.filter(a => a.id !== act.id && a.mode !== 'idle').map(a => `<option value="${esc(a.id)}" ${act.next === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select><span></span></div>
+        <div class="slide"><label>蹲下时</label><select data-af="low"><option value="0" ${!act.low ? 'selected' : ''}>普通动作</option><option value="1" ${act.low ? 'selected' : ''}>蹲下版（按住 C 再按键）</option></select><span></span></div>
         <div class="slide"><label>双手握</label><select data-af="grip"><option value="1" ${act.grip !== false ? 'selected' : ''}>保持</option><option value="0" ${act.grip === false ? 'selected' : ''}>本动作松手</option></select><span></span></div>
         <p class="note">连招：动作播放时再按同一个键，结束后接下一式。下一式不需要自己的按键。</p>
       </div>
@@ -669,6 +670,7 @@ export class Hangar {
         const a = b.actions.find(x => x.id === this.actId);
         if (f === 'mode' && inp.value === 'idle') for (const o of b.actions) if (o.mode === 'idle') o.mode = 'once';
         if (f === 'grip') { if (inp.value === '0') a.grip = false; else delete a.grip; return; }
+        if (f === 'low') { if (inp.value === '1') a.low = true; else delete a.low; return; }
         a[f] = f === 'name' ? (inp.value || '动作').slice(0, 12) : inp.value;
         if (f === 'mode' && inp.value === 'idle') { a.key = ''; a.next = ''; }
       });

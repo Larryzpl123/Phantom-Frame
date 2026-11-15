@@ -198,8 +198,12 @@ export function JIDIAN() {
     wind:  { rSP: 65, rSR: -22, rE: -81, rwR: 62, rwP: 12 },
     thrust:{ rSP: 40, rSR: -53, rE: -98, rwR: 99, rwP: 41 },
     sweep: { rSP: 61, rSR: -83, rE: -113, rwR: 128, rwP: 10 },
-    raise: { rSP: 77, rSR: 94, rE: -147, rwR: -51, rwP: -3 },
-    cut:   { rSP: 39, rSR: -51, rE: -99, rwR: 114, rwP: 49 },
+    // 劈: a straight vertical arc, lance at 32 deg up -> 14 deg down, both poses solved from the same seed so the
+    // swing between them is a clean chop (the old raise/cut pair rolled the shoulder 145 deg and swung sideways,
+    // passing over anything short like 磐岩). The blade ends just above the ground.
+    raise: { rSP: 30, rSR: -67, rE: -125, rwR: 106, rwP: 17 },
+    cut:   { rSP: 30, rSR: -40, rE: -89, rwR: 108, rwP: 57 },
+    sweepLow: { rSP: 58, rSR: -78, rE: -110, rwR: 130, rwP: 21 },   // 横扫's stance with the lance 9 deg down
   };
   const P = (name) => J(H, POSE[name]);
   b.action({ id: 'idle', name: '待机', key: '', mode: 'idle', keys: [{ t: 0, j: P('idle'), yaw: -35 }] });
@@ -227,10 +231,18 @@ export function JIDIAN() {
   // K: 劈 — raise the lance, bring it down across
   b.action({ id: 'slam', name: '劈', key: 'KeyK', mode: 'once', keys: [
     { t: 0, j: P('idle'), yaw: -35 },
-    { t: 0.26, j: P('raise'), yaw: -30 },
-    { t: 0.46, j: P('cut'), yaw: -30, lunge: 8 },
-    { t: 0.68, j: P('cut'), yaw: -30 },
-    { t: 0.9, j: P('idle'), yaw: -35 },
+    { t: 0.22, j: P('raise'), yaw: -30 },
+    { t: 0.4, j: P('cut'), yaw: -30, lunge: 9 },
+    { t: 0.62, j: P('cut'), yaw: -30 },
+    { t: 0.85, j: P('idle'), yaw: -35 },
+  ] });
+  // C + J: 扫地 — squatting, the lance sweeps just above the ground (for tanks, quadrupeds, a torso on the floor)
+  b.action({ id: 'sweepLow', name: '扫地', key: 'KeyJ', low: true, mode: 'once', keys: [
+    { t: 0, j: P('sweepLow'), yaw: -35 },
+    { t: 0.16, j: P('sweepLow'), yaw: -110 },
+    { t: 0.44, j: P('sweepLow'), yaw: 45, lunge: 4 },
+    { t: 0.6, j: P('sweepLow'), yaw: 40 },
+    { t: 0.82, j: P('idle'), yaw: -35 },
   ] });
   // L (hold): 转枪 — let go with the left hand, right arm forward, the wrist spins the lance into a disc
   b.action({ id: 'spin', name: '转枪', key: 'KeyL', mode: 'hold', grip: false, keys: [
@@ -262,6 +274,13 @@ export function XUANYUE() {
     { t: 0.44, j: P({ rSP: -40, rE: -5, rwP: 30 }), lunge: 7 },
     { t: 0.7, j: P({ rSP: -40, rE: -5, rwP: 30 }) },
     { t: 0.9, j: P({}) },
+  ] });
+  b.action({ id: 'lowChop', name: '下劈', key: 'KeyJ', low: true, mode: 'once', keys: [      // C + J
+    { t: 0, j: P({}) },
+    { t: 0.24, j: P({ rSP: -185, rE: -30, rwP: 40 }) },
+    { t: 0.42, j: P({ rSP: -20, rE: -5, rwP: 62 }), lunge: 6 },
+    { t: 0.66, j: P({ rSP: -20, rE: -5, rwP: 62 }) },
+    { t: 0.88, j: P({}) },
   ] });
   b.action({ id: 'cleave', name: '横斩', key: '', mode: 'once', ai: { kind: 'melee', range: [0, 5] }, keys: [
     { t: 0, j: P({ rSP: -70, rE: -20, rwP: 80 }), yaw: 0 },
@@ -311,6 +330,11 @@ export function CHISUN() {
     { t: 0.3, j: P({ lSP: -10, lSR: 0, lE: -110, lwP: 0 }), yaw: -30, lunge: 5 },
     { t: 0.5, j: P({}), yaw: 0 },
   ] });
+  b.action({ id: 'lowCut', name: '低扫', key: 'KeyK', low: true, mode: 'once', keys: [      // C + K: tonfa sweep at the shins
+    { t: 0, j: P({ lSP: -30, lSR: 0, lE: 0, lwP: 0 }), yaw: 60 },
+    { t: 0.3, j: P({ lSP: -30, lSR: 0, lE: 0, lwP: 0 }), yaw: -60, lunge: 4 },
+    { t: 0.5, j: P({}), yaw: 0 },
+  ] });
   b.action({ id: 'kick', name: '回身斩', key: '', mode: 'once', ai: { kind: 'melee', range: [0, 2.6] }, keys: [
     { t: 0, j: P({ lSP: -90, lSR: 0, lE: -110, lwP: 0 }), yaw: 0 },
     { t: 0.36, j: P({ lSP: -90, lSR: 0, lE: -110, lwP: 0 }), yaw: 360, lunge: 4 },
@@ -348,6 +372,14 @@ export function SHUANGFENG() {
     { t: 0.16, j: P({ rSP: -85, rE: 0, rwP: 90, lSP: -85, lE: 0, lwP: 90 }), yaw: 0, lunge: 10 },
     { t: 0.4, j: P({ rSP: -85, rE: 0, rwP: 90, lSP: -85, lE: 0, lwP: 90 }) },
     { t: 0.6, j: P({}), yaw: -15 },
+  ] });
+  const low = { rSP: -25, rE: -10, rwP: 60, lSP: -25, lE: -10, lwP: 60 };
+  b.action({ id: 'lowCut', name: '下斩', key: 'KeyJ', low: true, mode: 'once', keys: [      // C + J: both swords sweep low
+    { t: 0, j: P(low), yaw: 0 },
+    { t: 0.14, j: P(low), yaw: -70 },
+    { t: 0.38, j: P(low), yaw: 70, lunge: 6 },
+    { t: 0.5, j: P(low), yaw: 60 },
+    { t: 0.7, j: P({}), yaw: -15 },
   ] });
   b.action({ id: 'thrust', name: '突刺', key: 'KeyK', mode: 'once', keys: [
     { t: 0, j: P({}), yaw: -15 },

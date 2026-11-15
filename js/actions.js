@@ -56,7 +56,16 @@ export class ActionPlayer {
     this.busy = false;
   }
 
-  byKey(code) { for (const a of this.actions.values()) if (a.key === code && a.mode !== 'idle') return a; return null; }
+  // a key can have two moves: the normal one and a squatting one (action.low, played while C is held)
+  byKey(code) {
+    let any = null;
+    for (const a of this.actions.values()) {
+      if (a.key !== code || a.mode === 'idle') continue;
+      if (!!a.low === !!this.low) return a;
+      if (!any && !a.low) any = a;
+    }
+    return any;
+  }
 
   press(code) {
     this.held.add(code);

@@ -193,6 +193,7 @@
       <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>移动（锁定对手，A/D 绕圈）</dd>
       <dt><kbd>空格</kbd></dt><dd>跳；空中按住 = 推进器悬停</dd>
       <dt><kbd>Shift</kbd></dt><dd>冲刺（短暂无敌）</dd>
+      <dt><kbd>C</kbd></dt><dd>按住蹲下：够得着矮的对手（坦克、四足、断了腿坐地上的）</dd>
       <dt><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd>…</dt><dd>动作键（战斗右下角有列表），连按出连招；左键=J 右键=K</dd>
       <dt><kbd>Esc</kbd></dt><dd>回菜单　结算后 <kbd>R</kbd> 再来</dd>
     </dl>
@@ -237,7 +238,7 @@
   <div id="round" hidden></div>
   <div id="fighters" hidden></div>
   <div id="moves"></div>
-  <div class="basics">WASD 移动 · 空格 跳/悬停 · SHIFT 冲刺 · ESC 菜单</div>
+  <div class="basics">WASD 移动 · 空格 跳/悬停 · SHIFT 冲刺 · C 蹲 · ESC 菜单</div>
   <div id="flash"></div>
 </section>
 
@@ -292,30 +293,30 @@
  "imports": {
   "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
   "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/",
-  "./js/actions.js": "./js/actions.js?v=20261115040629",
-  "./js/ai.js": "./js/ai.js?v=20261115040629",
-  "./js/battle.js": "./js/battle.js?v=20261115040629",
-  "./js/blueprint.js": "./js/blueprint.js?v=20261115040629",
-  "./js/combat.js": "./js/combat.js?v=20261115040629",
-  "./js/config.js": "./js/config.js?v=20261115040629",
-  "./js/hangar.js": "./js/hangar.js?v=20261115040629",
-  "./js/ink.js": "./js/ink.js?v=20261115040629",
-  "./js/main.js": "./js/main.js?v=20261115040629",
-  "./js/maps.js": "./js/maps.js?v=20261115040629",
-  "./js/mech.js": "./js/mech.js?v=20261115040629",
-  "./js/net.js": "./js/net.js?v=20261115040629",
-  "./js/online.js": "./js/online.js?v=20261115040629",
-  "./js/partMesh.js": "./js/partMesh.js?v=20261115040629",
-  "./js/parts.js": "./js/parts.js?v=20261115040629",
-  "./js/presets.js": "./js/presets.js?v=20261115040629",
-  "./js/save.js": "./js/save.js?v=20261115040629",
-  "./js/spec.js": "./js/spec.js?v=20261115040629",
-  "./js/tech.js": "./js/tech.js?v=20261115040629"
+  "./js/actions.js": "./js/actions.js?v=20261115043208",
+  "./js/ai.js": "./js/ai.js?v=20261115043208",
+  "./js/battle.js": "./js/battle.js?v=20261115043208",
+  "./js/blueprint.js": "./js/blueprint.js?v=20261115043208",
+  "./js/combat.js": "./js/combat.js?v=20261115043208",
+  "./js/config.js": "./js/config.js?v=20261115043208",
+  "./js/hangar.js": "./js/hangar.js?v=20261115043208",
+  "./js/ink.js": "./js/ink.js?v=20261115043208",
+  "./js/main.js": "./js/main.js?v=20261115043208",
+  "./js/maps.js": "./js/maps.js?v=20261115043208",
+  "./js/mech.js": "./js/mech.js?v=20261115043208",
+  "./js/net.js": "./js/net.js?v=20261115043208",
+  "./js/online.js": "./js/online.js?v=20261115043208",
+  "./js/partMesh.js": "./js/partMesh.js?v=20261115043208",
+  "./js/parts.js": "./js/parts.js?v=20261115043208",
+  "./js/presets.js": "./js/presets.js?v=20261115043208",
+  "./js/save.js": "./js/save.js?v=20261115043208",
+  "./js/spec.js": "./js/spec.js?v=20261115043208",
+  "./js/tech.js": "./js/tech.js?v=20261115043208"
  }
 }
 </script>
 <script type="module">
-  import('./js/main.js?v=20261115040629').catch(function (e) { console.error(e); window.__moduleFailed && window.__moduleFailed(e); });
+  import('./js/main.js?v=20261115043208').catch(function (e) { console.error(e); window.__moduleFailed && window.__moduleFailed(e); });
 </script>
 </body>
 </html>

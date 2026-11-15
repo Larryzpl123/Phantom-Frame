@@ -70,8 +70,9 @@ export class Battle {
       m.pos.copy(base).addScaledVector(across, (k - (n - 1) / 2) * 5);
       m.yaw = Math.atan2(-base.x, -base.z);
       this.arena.place && this.arena.place(m.pos);
-      if (i > 0 && this.opts.ladder && !this.online) {
-        const S = aiSkill(this.opts.ladder.level);
+      const isAI = i !== (this.opts.meIndex || 0) && !f.remote && (f.level ?? 8) > 0;
+      if (isAI && !this.guest) {                              // AI strength by level: soft at the bottom, tougher past the cap
+        const S = aiSkill(this.opts.ladder ? this.opts.ladder.level : (f.level ?? 8));
         m.dmgMul = S.dmgMul;
         if (S.hpMul !== 1) for (const r of m.parts.values()) { r.hp *= S.hpMul; r.maxHp *= S.hpMul; }
       }
@@ -178,6 +179,7 @@ export class Battle {
     if (it.move.lengthSq() > 1) it.move.normalize();
     it.face = Math.atan2(to.x, to.z);
     it.hover = k.has('Space');
+    it.crouch = k.has('KeyC');
     it.dash = this.wantDash ? (it.move.lengthSq() > 0.01 ? it.move.clone() : to.clone()) : null;
     this.wantDash = false;
     return it;
@@ -376,7 +378,7 @@ export class Battle {
       while (n && !seen.has(n.id)) { chain.push(n.name); seen.add(n.id); n = n.next ? this.me.bp.actions.find(x => x.id === n.next) : null; }
       const li = document.createElement('div');
       li.className = 'move';
-      li.innerHTML = `<kbd>${keyName(a.key)}</kbd><span>${a.name}${chain.length ? ' → ' + chain.join(' → ') : ''}${a.mode === 'hold' ? '（按住）' : ''}</span>`;
+      li.innerHTML = `<kbd>${a.low ? 'C+' : ''}${keyName(a.key)}</kbd><span>${a.name}${chain.length ? ' → ' + chain.join(' → ') : ''}${a.mode === 'hold' ? '（按住）' : ''}</span>`;
       h.moves.appendChild(li);
     }
     if (this.mechs.length > 2) { const li = document.createElement('div'); li.className = 'move'; li.innerHTML = '<kbd>Tab</kbd><span>切换锁定</span>'; h.moves.appendChild(li); }

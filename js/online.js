@@ -7,7 +7,7 @@
 //
 // Messages (JSON over js/net.js; R = reliable channel, F = fast channel that may drop):
 //   guest -> host  hello {bp}                 R  my mech, on joining
-//                  in    {mv:[x,z], f, h}     F  30/s: move direction (world), facing, hover held
+//                  in    {mv:[x,z], f, h, c}  F  30/s: move direction (world), facing, hover held, squat held
 //                  k     {c, d}               R  a key went down (d=1) / up (d=0): attacks, jump, dash
 //   host -> guest  lobby {players, set}       R  who's in the room, the settings
 //                  start {fighters, me, ...}  R  the match: everyone's mech and team, which one is yours
@@ -157,6 +157,7 @@ export class OnlineSession {
       if (Array.isArray(msg.mv)) it.move.set(+msg.mv[0] || 0, 0, +msg.mv[1] || 0).clampLength(0, 1);
       if (Number.isFinite(msg.f)) it.face = msg.f;
       it.hover = !!msg.h;
+      it.crouch = !!msg.c;
     } else if (msg.t === 'k') {
       const c = String(msg.c);
       if (c === 'Space') { if (msg.d) it.jump = true; return; }
@@ -199,7 +200,7 @@ export class OnlineSession {
     if (this.role !== 'host') return;
     const C = b.combat;
     const v3 = (v) => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)];
-    C.onHit = (o, part, dmg, from, at, dir) => this.send({ t: 'hit', o: o.index, p: v3(at), d: v3(dir), dmg: +dmg.toFixed(1), ink: from && from.ink ? 1 : 0 }, true);
+    C.onHit = (o, part, dmg, from, at, dir) => this.send({ t: 'hit', o: o.index, id: part.id, p: v3(at), d: v3(dir), dmg: +dmg.toFixed(1), ink: from && from.ink ? 1 : 0 }, true);
     C.onCut = (o, s, at) => this.send({ t: 'cut', o: o.index, p: v3(at || s.pos) }, true);
     C.onShot = (s) => this.send({ t: 'shot', id: s.nid, ty: s.type, o: s.owner.index, p: v3(s.pos), v: v3(s.vel), r: +s.r.toFixed(3), l: +s.life.toFixed(2) }, true);
     C.onShotEnd = (s) => this.send({ t: 'sx', id: s.nid, p: v3(s.pos) }, true);
@@ -240,7 +241,7 @@ export class OnlineSession {
       case 'hit': {
         const o = M[msg.o]; if (!o) break;
         const at = new THREE.Vector3(...msg.p), dir = new THREE.Vector3(...msg.d);
-        o.shared.uFlash.value = 0.4;
+        o.flashPart(o.parts.get(msg.id));
         if (msg.ink) { b.fx.splash(at, dir, Math.min(9, 3 + msg.dmg * 0.22), '#121a1c', 0.28, 5); b.fx.stain(at.x + dir.x, at.z + dir.z, 0.6 + msg.dmg * 0.04); }
         else { b.fx.sparks(at, dir, Math.min(16, 5 + msg.dmg * 0.4), '#ffc27a', 0.2, 9); b.fx.flare(at, '#ffb36b', 0.5 + msg.dmg * 0.025); }
         b.combat.shake = Math.max(b.combat.shake, Math.min(0.5, msg.dmg / 50));
@@ -289,7 +290,7 @@ export class OnlineSession {
     this.inT += rawDt;
     if (this.inT >= 1 / CFG.net.inputRate) {
       this.inT = 0;
-      this.send({ t: 'in', mv: [+it.move.x.toFixed(3), +it.move.z.toFixed(3)], f: +it.face.toFixed(3), h: it.hover ? 1 : 0 }, false);
+      this.send({ t: 'in', mv: [+it.move.x.toFixed(3), +it.move.z.toFixed(3)], f: +it.face.toFixed(3), h: it.hover ? 1 : 0, c: it.crouch ? 1 : 0 }, false);
     }
     it.jump = false;
     // everyone's pose
