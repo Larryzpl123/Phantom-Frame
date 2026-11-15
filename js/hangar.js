@@ -10,7 +10,8 @@ import { addPart, removePart, updatePart, makePart, emptyBlueprint, clone, unlin
 import { Mech } from './mech.js';
 import { buildTechEnvironment } from './tech.js';
 import { ActionPlayer, sampleJoint, sampleYaw, actionLength, servo } from './actions.js';
-import { saveBuild, exportFile, importFile, roster } from './save.js';
+import { saveBuild, saveToFolder, canWrite, exportFile, importFile, roster } from './save.js';
+import { toShareCode, fromShareCode } from './share.js';
 import { CFG, DEFAULT_PALETTE } from './config.js';
 import { partGeometry } from './partMesh.js';
 
@@ -343,17 +344,41 @@ export class Hangar {
       this.hover(e);
     });
     $('hNew').onclick = () => { this.setBp(emptyBlueprint()); this.refreshLoadSel(); };
-    $('hSave').onclick = async () => {
+    const named = () => {
       const name = ($('bpName').value || '新机体').trim().slice(0, 24);
-      if (!/^[0-9A-Za-z_\-\u3400-\u9fff\uf900-\ufaff]{1,24}$/.test(name)) { this.toast('名字只能用中文、字母、数字、- 和 _（它也是文件夹名）'); return; }
-      this.bp.name = name;
-      const where = await saveBuild(this.bp);
-      this.toast(where === 'disk' ? `已保存到「${name}/${name}.json」` : where === 'local' ? `已存到这个浏览器里（不是用 start.command 本地运行，写不进文件夹）` : '保存失败');
+      if (!/^[0-9A-Za-z_\-\u3400-\u9fff\uf900-\ufaff]{1,24}$/.test(name)) { this.toast('名字只能用中文、字母、数字、- 和 _'); return null; }
+      this.bp.name = name; return name;
+    };
+    $('hSave').onclick = () => {
+      const name = named(); if (!name) return;
+      this.toast(saveBuild(this.bp) ? `「${name}」已存到这个浏览器里` : '保存失败（浏览器不让存，可能是无痕窗口）');
       this.refreshLoadSel();
     };
-    $('hExport').onclick = () => { this.bp.name = $('bpName').value || this.bp.name; exportFile(this.bp); };
-    $('hImport').onclick = () => $('importFile').click();
-    $('importFile').onchange = (e) => { const f = e.target.files[0]; if (!f) return; importFile(f).then(bp => { this.setBp(bp); this.toast(`已导入「${bp.name}」`); }).catch(err => this.toast('导入失败：' + err.message)); e.target.value = ''; };
+    $('hFolder').hidden = !canWrite;
+    $('hFolder').onclick = async () => {
+      const name = named(); if (!name) return;
+      this.toast(await saveToFolder(this.bp) ? `已写到「${name}/${name}.json」` : '写不进文件夹（要用 start.command 本地打开）');
+      this.refreshLoadSel();
+    };
+    // 分享 · 导入
+    const box = $('shareBox'), msg = (t) => { $('shMsg').textContent = t || ''; };
+    $('hShare').onclick = () => { msg(''); $('shText').value = ''; box.hidden = false; };
+    $('shClose').onclick = () => { box.hidden = true; };
+    $('shCopy').onclick = async () => {
+      this.bp.name = $('bpName').value || this.bp.name;
+      try {
+        const code = await toShareCode(this.bp);
+        $('shText').value = code;
+        try { await navigator.clipboard.writeText(code); msg(`已复制（${code.length} 个字符）`); } catch { $('shText').select(); msg(`${code.length} 个字符，已选中，按 Ctrl/⌘+C 复制`); }
+      } catch (e) { msg('生成失败：' + e.message); }
+    };
+    $('shLoad').onclick = async () => {
+      try { const bp = await fromShareCode($('shText').value); this.setBp(bp); this.refreshLoadSel(); box.hidden = true; this.toast(`已载入「${bp.name}」（还没保存）`); }
+      catch (e) { msg(e.message); }
+    };
+    $('shDownload').onclick = () => { this.bp.name = $('bpName').value || this.bp.name; exportFile(this.bp); };
+    $('shFile').onclick = () => $('importFile').click();
+    $('importFile').onchange = (e) => { const f = e.target.files[0]; if (!f) return; importFile(f).then(bp => { this.setBp(bp); box.hidden = true; this.toast(`已导入「${bp.name}」（还没保存）`); }).catch(err => msg('导入失败：' + err.message)); e.target.value = ''; };
     $('hUndo').onclick = () => this.undo();
     $('hRedo').onclick = () => this.redo();
     $('hMirror').onclick = () => this.setMirror(!this.mirror);
@@ -478,7 +503,7 @@ export class Hangar {
 
   refreshLoadSel() {
     const s = $('loadSel');
-    s.innerHTML = '<option value="">载入…</option>' + roster().map(r => `<option value="${esc(r.id)}">${esc(r.name)}${{ folder: '', local: '（浏览器）', preset: '（内置）' }[r.src]}</option>`).join('');
+    s.innerHTML = '<option value="">载入…</option>' + roster().map(r => `<option value="${esc(r.id)}">${esc(r.name)}${{ folder: '（文件夹）', local: '（浏览器）', preset: '（内置）' }[r.src]}</option>`).join('');
   }
 
   renderSide() {

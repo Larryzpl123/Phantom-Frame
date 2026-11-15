@@ -39,6 +39,7 @@ export class Battle {
     this.score = new Map();
     this.round = 1;
     this.camPos = new THREE.Vector3(0, 5, -22); this.camLook = new THREE.Vector3();
+    this.matchT = 0;                                          // whole match, every round (the ladder board wants it)
     this.online = opts.online || null;
     this.guest = !!(this.online && this.online.role === 'guest');
     if (this.guest) this.combat.viewOnly = true;
@@ -190,7 +191,7 @@ export class Battle {
     if (this.guest) { this.online.guestUpdate(this, rawDt); return; }
     let dt = Math.min(rawDt, 1 / 30) * this.timeScale;
     if (this.combat.hitStop > 0) { this.combat.hitStop -= rawDt; dt *= 0.08; }
-    this.t += dt; this.roundT += dt;
+    this.t += dt; this.roundT += dt; this.matchT += dt;
     const it = this.playerIntent();
     for (const ai of this.ais) {
       const m = ai.me;

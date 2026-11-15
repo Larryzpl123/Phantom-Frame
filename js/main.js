@@ -5,7 +5,9 @@ import { Battle } from './battle.js';
 import { PRESETS } from './presets.js';
 import { Mech } from './mech.js';
 import { buildTechEnvironment } from './tech.js';
-import { roster, refreshDisk, ladderProgress, ladderBeat } from './save.js';
+import { roster, refreshDisk, ladderProgress, ladderBeat, ladderSet } from './save.js';
+import { Board } from './board.js';
+import { anonymize, fromBoard } from './share.js';
 import { aiSkill, ladderFoe } from './ai.js';
 import { MAPS, MAP_KEYS } from './maps.js';
 import { Hangar } from './hangar.js';
@@ -199,9 +201,11 @@ function startBattle(opts, from = 'menu') {
   mode = 'battle';
   const L = opts.ladder;
   const online = opts.online;
+  // a ladder fight tells the board it started (take-off ticket: a level can't be reported faster than it was played)
+  const ticket = L && Board.enabled ? Board.runStart() : null;
   battle = new Battle(renderer, Object.assign({}, opts, {
     onRestart: online ? () => online.start(fillBps()) : () => startBattle(L ? ladderOpts(L.level) : lastFight.opts, lastFight.from),
-    onWin: L ? () => ladderBeat(L.level) : null,
+    onWin: L ? () => { ladderBeat(L.level); reportClear(L.level, opts.fighters[0].bp, ticket); } : null,
     onNext: L ? () => startBattle(ladderOpts(L.level + 1), lastFight.from) : null,
   }), hud);
   window.__battle = battle;
@@ -215,6 +219,79 @@ function leaveBattle() {
   }
   if (returnTo === 'hangar') openHangar(); else showMenu();
 }
+
+// a ladder level won: put it (and the mech, anonymous) on the board, then say where that leaves me
+async function reportClear(level, bp, ticketP) {
+  const b = battle;
+  if (!Board.enabled) return;
+  const mech = anonymize(bp);
+  const note = (t) => { if (b === battle && b) { b.boardNote = t; if (!hud.result.hidden) hud.resultSub.textContent += ' · ' + t; else setTimeout(() => { if (b === battle && !hud.result.hidden && !hud.resultSub.textContent.includes(t)) hud.resultSub.textContent += ' · ' + t; }, 1200); } };
+  if (!mech) { note('这台用了导入模型，不能上榜'); return; }
+  const r = await Board.clear({ level, time: Math.max(1, Math.round(b.matchT)), ticket: await ticketP, mech });
+  if (r.status === 409 && Number.isInteger(r.level)) { ladderSet(r.level + 1); note(`天梯榜记录你在第 ${r.level} 关：从第 ${r.level + 1} 关接着打才算榜`); return; }
+  if (r.error) { note(r.error === 'offline' ? '天梯榜连不上（这关只记在本机）' : '天梯榜没收：' + r.error); return; }
+  note(r.listed ? `天梯榜第 ${r.rank} 名 / ${r.total}` : '锁定呼号后才会出现在天梯榜上（机库 → 🏆 天梯榜）');
+}
+// on start: if the board has me further along (another device), carry on from there
+async function syncLadder() {
+  if (!Board.enabled || !Board.me()) return;
+  const t = await Board.top();
+  if (t.me && t.me.level + 1 > ladderProgress().unlocked) { ladderSet(t.me.level + 1); if (mode === 'hangar') $('hLadder').textContent = `AI 天梯 · 第 ${t.me.level + 1} 关`; }
+}
+
+// ---------- 🏆 board window (in the hangar) ----------
+const fmtTime = (s) => (s == null ? '' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+async function openBoard() {
+  $('boardBox').hidden = false; $('bdBackup').hidden = true;
+  $('bdList').textContent = '载入中…';
+  if (!Board.me()) await Board.ensureId();
+  const t = await Board.top();
+  renderBoard(t);
+}
+function renderBoard(t) {
+  const me = Board.me();
+  if (t.error) { $('bdList').textContent = '连不上天梯榜：' + t.error; }
+  else {
+    const list = $('bdList'); list.innerHTML = '';
+    if (!t.rows.length) list.textContent = '还没有人上榜。打赢一关 AI 天梯就有你了。';
+    for (const r of t.rows) {
+      const row = document.createElement('div');
+      row.className = 'bdRow' + (me && r.id === me.id ? ' mine' : '');
+      row.innerHTML = `<span>#${r.rank}</span><span></span><span>第 ${r.level} 关</span><span>${fmtTime(r.time)}</span><span></span>`;
+      row.children[1].textContent = `${r.callsign} #${r.id}`;
+      if (r.mech) {
+        const b = document.createElement('button'); b.className = 'btn'; b.textContent = '复制机体';
+        b.onclick = async () => {
+          b.disabled = true;
+          const g = await Board.getMech(r.id);
+          b.disabled = false;
+          if (g.error) { hangar.toast('拿不到这台：' + g.error); return; }
+          try { hangar.setBp(fromBoard(g.mech, `天梯${r.rank}`)); hangar.refreshLoadSel(); $('boardBox').hidden = true; hangar.toast(`已把天梯第 ${r.rank} 名的机体放上台子（还没保存）`); }
+          catch (e) { hangar.toast('这台载不进来：' + e.message); }
+        };
+        row.children[4].appendChild(b);
+      }
+      list.appendChild(row);
+    }
+  }
+  const m = t.me;
+  $('bdMe').textContent = !me ? '连不上天梯榜，没法注册。'
+    : `你是「${me.callsign} #${me.id}」` + (m && m.level ? ` · 打到第 ${m.level} 关` + (m.rank ? ` · 第 ${m.rank} 名 / ${t.total}` : '') : ' · 还没上榜') +
+      (me.locked ? '' : ' · 呼号还没锁定：锁定前不会出现在榜上，可以先换到满意的');
+  $('bdReroll').hidden = !me || me.locked; $('bdLock').hidden = !me || me.locked; $('bdBackupBtn').hidden = !me;
+}
+$('hBoard').addEventListener('click', openBoard);
+$('bdClose').addEventListener('click', () => { $('boardBox').hidden = true; });
+$('bdReroll').addEventListener('click', async () => { const r = await Board.reroll(); if (r.error) hangar.toast(r.error === 'slow down' ? '慢一点' : r.error); renderBoard(await Board.top()); });
+$('bdLock').addEventListener('click', async () => { const r = await Board.lock(); if (r.error) hangar.toast(r.error); renderBoard(await Board.top()); });
+$('bdBackupBtn').addEventListener('click', () => { $('bdBackup').hidden = !$('bdBackup').hidden; $('bdCode').value = Board.backupCode(); });
+$('bdCopyCode').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('bdCode').value); hangar.toast('备份码已复制'); } catch { $('bdCode').select(); } });
+$('bdRestoreBtn').addEventListener('click', async () => {
+  const r = await Board.restore($('bdRestore').value);
+  if (r.error) { hangar.toast(r.error); return; }
+  hangar.toast(`已恢复「${r.callsign} #${r.id}」`); $('bdRestore').value = '';
+  await syncLadder(); renderBoard(await Board.top());
+});
 
 function renderLadderButton() {
   const p = ladderProgress();
@@ -246,6 +323,7 @@ $('hMap').addEventListener('change', () => { $('map').value = $('hMap').value; }
 function bringFromHangar() { const bp = hangar && hangar.ready(); if (!bp) return false; fromHangar = bp; pick.me = HANGAR_ID; return true; }
 $('hSortie').addEventListener('click', () => { if (bringFromHangar()) showMenu(); });
 $('hOnline').addEventListener('click', () => { if (bringFromHangar()) { showMenu(); onStatus(''); showPanel('online'); } });
+$('hBoard').hidden = !Board.enabled;
 $('hLadder').addEventListener('click', () => { if (bringFromHangar()) startBattle(ladderOpts(ladderProgress().unlocked), 'hangar'); });
 $('ladder').addEventListener('click', () => startBattle(ladderOpts(ladderProgress().unlocked)));
 $('map').innerHTML = MAP_KEYS.map(k => `<option value="${k}">${MAPS[k].name}</option>`).join('');
@@ -292,6 +370,7 @@ refreshDisk().then(() => {
   if (!roster().some(r => r.id === pick.foe)) pick.foe = byName('玄岳');
   openHangar(entry(pick.me).get());
   requestAnimationFrame(frame); window.__ready = true;
+  syncLadder();
 });
 window.__showMenu = showMenu;   // test hook
 window.__openHangar = openHangar;

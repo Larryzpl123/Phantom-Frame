@@ -148,6 +148,17 @@
   .jrow { display: grid; grid-template-columns: 1.2em 5.4em minmax(0, 1fr) 3.2em; gap: 6px; align-items: center; font-size: 12px; }
   .jrow.hot { background: rgba(61,224,208,.1); }
   .jrow.off label, .jrow.off output { color: var(--dim); opacity: .55; }
+  .modal { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, 92vw); max-height: 86vh; overflow-y: auto;
+    background: rgba(8, 15, 19, .96); border: 1px solid var(--line); padding: 16px 18px; display: grid; gap: 10px; z-index: 5; clip-path: var(--cut); }
+  .modal.wide { width: min(720px, 94vw); }
+  .modal h3 { margin: 0; font-size: 17px; } .modal h3 small { color: var(--dim); font-size: 12px; font-weight: 400; margin-left: 8px; }
+  .modal textarea, .modal input[type=text] { width: 100%; box-sizing: border-box; background: rgba(0,0,0,.35); border: 1px solid var(--line-2); color: inherit; font: 12px/1.4 ui-monospace, Menlo, monospace; padding: 6px; }
+  .modal .row input[type=text] { flex: 1; }
+  .row.end { justify-content: flex-end; }
+  .boardList { display: grid; gap: 2px; font-size: 13px; }
+  .bdRow { display: grid; grid-template-columns: 3.2em 1fr 5em 4.5em 6.5em; gap: 8px; align-items: center; padding: 3px 6px; background: rgba(255,255,255,.02); }
+  .bdRow.mine { background: rgba(61,224,208,.14); }
+  .bdRow .btn { padding: 2px 8px; font-size: 12px; }
   .dock { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); display: grid; gap: 6px; justify-items: center;
     background: var(--glass); border: 1px solid var(--line); padding: 8px 12px; clip-path: var(--cut); }
   .dock .row { justify-content: center; }
@@ -260,9 +271,9 @@
     <input type="text" id="bpName" aria-label="机体名称" maxlength="24">
     <select id="loadSel" aria-label="载入"><option value="">载入…</option></select>
     <button class="btn" id="hNew">新建</button>
-    <button class="btn" id="hSave">保存</button>
-    <button class="btn" id="hExport">导出</button>
-    <button class="btn" id="hImport">导入</button>
+    <button class="btn" id="hSave" title="存到这个浏览器里">保存</button>
+    <button class="btn" id="hFolder" hidden title="写成 机甲对战/名字/名字.json（只有用 start.command 本地打开时能用）">存到文件夹</button>
+    <button class="btn" id="hShare" title="分享码 / .json 文件">分享 · 导入</button>
     <input type="file" id="importFile" accept=".json,application/json" hidden>
     <button class="btn" id="hUndo" title="Ctrl+Z">撤销</button>
     <button class="btn" id="hRedo" title="Ctrl+Shift+Z">重做</button>
@@ -277,7 +288,33 @@
       <button class="btn" id="hTest" title="打一个不动的木桩，什么都不记录">试驾</button>
       <button class="btn primary big" id="hSortie" title="选对手、模式、难度（Enter）">出战 ▶</button>
       <button class="btn" id="hLadder">AI 天梯</button>
+      <button class="btn" id="hBoard" title="前 100 名，可以复制他们的机体">🏆 天梯榜</button>
     </div>
+  </div>
+  <div class="modal" id="shareBox" hidden>
+    <h3>分享 / 导入机体</h3>
+    <p class="note">分享码就是机体本身：零件、配色、动作、名字全在这串字里，不存在任何服务器上。复制发给朋友，对方粘贴到这里。</p>
+    <div class="row"><button class="btn primary" id="shCopy">复制这台的分享码</button><button class="btn" id="shDownload">下载 .json</button></div>
+    <textarea id="shText" rows="4" spellcheck="false" placeholder="粘贴分享码（PF1. 开头）"></textarea>
+    <div class="row"><button class="btn" id="shLoad">载入分享码</button><button class="btn" id="shFile">从 .json 文件导入</button></div>
+    <p class="note" id="shMsg"></p>
+    <div class="row end"><button class="btn" id="shClose">关闭</button></div>
+  </div>
+  <div class="modal wide" id="boardBox" hidden>
+    <h3>🏆 AI 天梯榜 <small>前 100 名 · 只列锁定了呼号的人 · 机体不带名字</small></h3>
+    <p class="note" id="bdMe"></p>
+    <div class="row" id="bdMeBtns">
+      <button class="btn" id="bdReroll">换一个呼号</button>
+      <button class="btn primary" id="bdLock">锁定呼号（锁了就上榜，以后不能改）</button>
+      <button class="btn" id="bdBackupBtn">备份码</button>
+    </div>
+    <div id="bdBackup" hidden>
+      <p class="note">备份码就是你的身份，谁拿到谁就能用你的名次，别给别人。换浏览器 / 换电脑时粘贴到下面恢复。Skybreak 的备份码在这里也能用（同一个排行榜服务器）。</p>
+      <div class="row"><input type="text" id="bdCode" readonly spellcheck="false"><button class="btn" id="bdCopyCode">复制</button></div>
+      <div class="row"><input type="text" id="bdRestore" placeholder="SKYP-…" spellcheck="false"><button class="btn" id="bdRestoreBtn">恢复</button></div>
+    </div>
+    <div class="boardList" id="bdList"></div>
+    <div class="row end"><button class="btn" id="bdClose">关闭</button></div>
   </div>
   <div class="palette" id="palette" aria-label="零件"></div>
   <div class="side">
@@ -304,30 +341,32 @@
  "imports": {
   "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
   "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/",
-  "./js/actions.js": "./js/actions.js?v=20261115045527",
-  "./js/ai.js": "./js/ai.js?v=20261115045527",
-  "./js/battle.js": "./js/battle.js?v=20261115045527",
-  "./js/blueprint.js": "./js/blueprint.js?v=20261115045527",
-  "./js/combat.js": "./js/combat.js?v=20261115045527",
-  "./js/config.js": "./js/config.js?v=20261115045527",
-  "./js/hangar.js": "./js/hangar.js?v=20261115045527",
-  "./js/ink.js": "./js/ink.js?v=20261115045527",
-  "./js/main.js": "./js/main.js?v=20261115045527",
-  "./js/maps.js": "./js/maps.js?v=20261115045527",
-  "./js/mech.js": "./js/mech.js?v=20261115045527",
-  "./js/net.js": "./js/net.js?v=20261115045527",
-  "./js/online.js": "./js/online.js?v=20261115045527",
-  "./js/partMesh.js": "./js/partMesh.js?v=20261115045527",
-  "./js/parts.js": "./js/parts.js?v=20261115045527",
-  "./js/presets.js": "./js/presets.js?v=20261115045527",
-  "./js/save.js": "./js/save.js?v=20261115045527",
-  "./js/spec.js": "./js/spec.js?v=20261115045527",
-  "./js/tech.js": "./js/tech.js?v=20261115045527"
+  "./js/actions.js": "./js/actions.js?v=20261115051746",
+  "./js/ai.js": "./js/ai.js?v=20261115051746",
+  "./js/battle.js": "./js/battle.js?v=20261115051746",
+  "./js/blueprint.js": "./js/blueprint.js?v=20261115051746",
+  "./js/board.js": "./js/board.js?v=20261115051746",
+  "./js/combat.js": "./js/combat.js?v=20261115051746",
+  "./js/config.js": "./js/config.js?v=20261115051746",
+  "./js/hangar.js": "./js/hangar.js?v=20261115051746",
+  "./js/ink.js": "./js/ink.js?v=20261115051746",
+  "./js/main.js": "./js/main.js?v=20261115051746",
+  "./js/maps.js": "./js/maps.js?v=20261115051746",
+  "./js/mech.js": "./js/mech.js?v=20261115051746",
+  "./js/net.js": "./js/net.js?v=20261115051746",
+  "./js/online.js": "./js/online.js?v=20261115051746",
+  "./js/partMesh.js": "./js/partMesh.js?v=20261115051746",
+  "./js/parts.js": "./js/parts.js?v=20261115051746",
+  "./js/presets.js": "./js/presets.js?v=20261115051746",
+  "./js/save.js": "./js/save.js?v=20261115051746",
+  "./js/share.js": "./js/share.js?v=20261115051746",
+  "./js/spec.js": "./js/spec.js?v=20261115051746",
+  "./js/tech.js": "./js/tech.js?v=20261115051746"
  }
 }
 </script>
 <script type="module">
-  import('./js/main.js?v=20261115045527').catch(function (e) { console.error(e); window.__moduleFailed && window.__moduleFailed(e); });
+  import('./js/main.js?v=20261115051746').catch(function (e) { console.error(e); window.__moduleFailed && window.__moduleFailed(e); });
 </script>
 </body>
 </html>

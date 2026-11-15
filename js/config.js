@@ -8,6 +8,8 @@ export const CFG = {
   hitFlash: 0.16,              // s a hit part stays lit (only that part)
   // online play (js/net.js, js/online.js). signal = the mailbox used to swap WebRTC offers: Skybreak's Worker.
   // The host runs the whole fight; guests send inputs and draw the host's snapshots, shown `delay` s behind.
+  // online AI Ladder board (js/board.js): Skybreak's Worker hosts it; '' = no board, nothing is ever sent
+  board: { url: 'https://skybreak-lb.larryzhong.workers.dev' },
   net: { signal: 'https://skybreak-lb.larryzhong.workers.dev', rate: 20, inputRate: 30, delay: 0.1, maxPlayers: 4 },
 
   build: {
