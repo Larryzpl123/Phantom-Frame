@@ -39,6 +39,11 @@ let showcase = null;
 const still = { move: new THREE.Vector3(), face: null, jump: false, hover: false, dash: null };
 
 function entry(id) { return roster().find(r => r.id === id) || roster()[0]; }
+// the mech I fight with: the one brought from the hangar (出战 / 联机 in the hangar dock), or a roster pick
+let fromHangar = null;
+const HANGAR_ID = '__hangar';
+function myBp() { return pick.me === HANGAR_ID && fromHangar ? JSON.parse(JSON.stringify(fromHangar)) : entry(pick.me).get(); }
+function myName() { return pick.me === HANGAR_ID && fromHangar ? fromHangar.name : entry(pick.me).name; }
 const byName = (n) => (roster().find(r => r.name === n) || roster()[0]).id;
 
 function setShowcase(bp) {
@@ -58,13 +63,21 @@ function renderRoster() {
   const list = roster();
   for (const [elId, key] of [['rosterMe', 'me'], ['rosterFoe', 'foe']]) {
     const el = $(elId); el.innerHTML = '';
+    if (key === 'me' && fromHangar) {                  // what's on the hangar stand right now, saved or not
+      const b = document.createElement('button');
+      b.setAttribute('aria-pressed', pick.me === HANGAR_ID ? 'true' : 'false');
+      b.innerHTML = `<b class="${fromHangar.style === 'ink' ? 'ink' : ''}"></b><small>机库当前</small>`;
+      b.querySelector('b').textContent = fromHangar.name;
+      b.addEventListener('click', () => { pick.me = HANGAR_ID; renderRoster(); setShowcase(myBp()); });
+      el.appendChild(b);
+    }
     for (const r of list) {
       const b = document.createElement('button');
       const bp = r.get();
       b.setAttribute('aria-pressed', pick[key] === r.id ? 'true' : 'false');
       b.innerHTML = `<b class="${bp && bp.style === 'ink' ? 'ink' : ''}"></b><small>${{ folder: '文件夹', local: '浏览器存档', preset: '内置' }[r.src]}</small>`;
       b.querySelector('b').textContent = r.name;
-      b.addEventListener('click', () => { pick[key] = r.id; renderRoster(); if (key === 'me') setShowcase(entry(pick.me).get()); });
+      b.addEventListener('click', () => { pick[key] = r.id; renderRoster(); if (key === 'me') setShowcase(myBp()); });
       el.appendChild(b);
     }
   }
@@ -76,17 +89,17 @@ function showMenu() {
   if (hangar) hangar.hide();
   $('menu').hidden = false;
   showPanel(session && session.role ? 'online' : 'main');
-  if (!roster().some(r => r.id === pick.me)) pick.me = byName('极点');
+  if (!(pick.me === HANGAR_ID && fromHangar) && !roster().some(r => r.id === pick.me)) pick.me = byName('极点');
   if (!roster().some(r => r.id === pick.foe)) pick.foe = byName('玄岳');
   renderRoster();
   renderLadderButton();
-  setShowcase(entry(pick.me).get());
+  setShowcase(myBp());
 }
 
 // ---------- battle ----------
 // opponents for multi-mech modes: the picked foe first, then the rest of the roster, round-robin
 function opponents(n) {
-  const list = roster().filter(r => r.id !== pick.me);
+  const list = roster().filter(r => r.id !== pick.me && r.name !== myName());
   const first = entry(pick.foe);
   const pool = [first, ...list.filter(r => r.id !== first.id)];
   return Array.from({ length: n }, (_, i) => pool[i % pool.length].get());
@@ -94,12 +107,12 @@ function opponents(n) {
 
 function matchOpts() {
   const mode = $('mode').value, lv = +$('level').value, map = $('map').value;
-  const me = entry(pick.me).get();
+  const me = myBp();
   if (mode === 'duel') return { mode: 'duel', map, fighters: [{ bp: me, team: 0 }, { bp: entry(pick.foe).get(), team: 1, level: lv }] };
   if (mode === 'ffa') return { mode: 'ffa', map, fighters: [{ bp: me }, ...opponents(3).map(bp => ({ bp, level: lv }))] };
   const n = mode === 'team3' ? 3 : 2;
-  const mates = roster().filter(r => r.id !== pick.me);
-  const allies = Array.from({ length: n - 1 }, (_, i) => (mates[i % mates.length] || entry(pick.me)).get());
+  const mates = roster().filter(r => r.id !== pick.me && r.name !== myName());
+  const allies = Array.from({ length: n - 1 }, (_, i) => mates.length ? mates[i % mates.length].get() : myBp());
   return { mode: 'team', map, fighters: [{ bp: me, team: 0 }, ...allies.map(bp => ({ bp, team: 0, level: lv })), ...opponents(n).map(bp => ({ bp, team: 1, level: lv }))] };
 }
 
@@ -109,7 +122,7 @@ function ladderOpts(level) {
   const foe = roster().find(r => r.name === foeName) || entry(pick.foe);
   return {
     mode: 'duel', map: MAP_KEYS[(level - 1) % MAP_KEYS.length], rounds: CFG_LADDER_ROUNDS, ladder: { level },
-    fighters: [{ bp: entry(pick.me).get(), team: 0 }, { bp: foe.get(), team: 1, level }],
+    fighters: [{ bp: myBp(), team: 0 }, { bp: foe.get(), team: 1, level }],
   };
 }
 const CFG_LADDER_ROUNDS = 2;
@@ -119,7 +132,7 @@ let session = null;
 function showPanel(which) {
   document.querySelector('#menu > .panel:not(#onlinePanel)').hidden = which !== 'main';
   $('onlinePanel').hidden = which !== 'online';
-  if (which === 'online') { $('onMech').textContent = entry(pick.me).name; renderOnline(); }
+  if (which === 'online') { $('onMech').textContent = myName(); renderOnline(); }
 }
 function onStatus(t) { $('onStatus').textContent = t || ''; }
 function fillBps() { return roster().map(r => r.get()); }
@@ -160,7 +173,7 @@ const hostSettings = () => ({ mode: $('onMode').value, map: $('onMap').value, ro
 $('onCreate').addEventListener('click', async () => {
   const S = newSession();
   onStatus('正在创建房间…');
-  try { S.settings = hostSettings(); await S.create(entry(pick.me).get()); onStatus('把房间号发给朋友，他们点「加入」。'); }
+  try { S.settings = hostSettings(); await S.create(myBp()); onStatus('把房间号发给朋友，他们点「加入」。'); }
   catch (e) { onStatus('创建失败：' + e.message); S.leave(); }
   renderOnline();
 });
@@ -169,7 +182,7 @@ $('onJoin').addEventListener('click', async () => {
   if (!code) { onStatus('先填房间号'); return; }
   const S = newSession();
   onStatus('正在连接房主…');
-  try { await S.join(code, entry(pick.me).get()); onStatus('已连上，等房主开始。'); }
+  try { await S.join(code, myBp()); onStatus('已连上，等房主开始。'); }
   catch (e) { onStatus('加入失败：' + e.message); S.leave(); }
   renderOnline();
 });
@@ -216,24 +229,34 @@ function openHangar(bp) {
   $('menu').hidden = true;
   mode = 'hangar';
   if (!hangar) hangar = new Hangar(renderer, {
-    onTest: (b) => startBattle({ mode: 'duel', map: $('map').value, fighters: [{ bp: b, team: 0 }, { bp: entry(pick.foe).get(), team: 1, level: +$('level').value }] }, 'hangar'),
+    onTest: (b) => startBattle({ mode: 'duel', map: $('hMap').value, fighters: [{ bp: b, team: 0 }, { bp: entry(pick.foe).get(), team: 1, level: 0 }] }, 'hangar'),
     onBack: () => showMenu(),
   });
-  hangar.show(bp);
+  hangar.show(bp || hangar.bp || myBp());
+  $('hMap').value = $('map').value;
+  const p = ladderProgress();
+  $('hLadder').textContent = `AI 天梯 · 第 ${p.unlocked} 关`;
   window.__hangar = hangar;
 }
 
 $('go').addEventListener('click', () => startBattle(matchOpts()));
+// hangar dock
+$('hMap').innerHTML = MAP_KEYS.map(k => `<option value="${k}">${MAPS[k].name}</option>`).join('');
+$('hMap').addEventListener('change', () => { $('map').value = $('hMap').value; });
+function bringFromHangar() { const bp = hangar && hangar.ready(); if (!bp) return false; fromHangar = bp; pick.me = HANGAR_ID; return true; }
+$('hSortie').addEventListener('click', () => { if (bringFromHangar()) showMenu(); });
+$('hOnline').addEventListener('click', () => { if (bringFromHangar()) { showMenu(); onStatus(''); showPanel('online'); } });
+$('hLadder').addEventListener('click', () => { if (bringFromHangar()) startBattle(ladderOpts(ladderProgress().unlocked), 'hangar'); });
 $('ladder').addEventListener('click', () => startBattle(ladderOpts(ladderProgress().unlocked)));
 $('map').innerHTML = MAP_KEYS.map(k => `<option value="${k}">${MAPS[k].name}</option>`).join('');
-$('toHangar').addEventListener('click', () => openHangar(entry(pick.me).get()));
+$('toHangar').addEventListener('click', () => openHangar(pick.me === HANGAR_ID && fromHangar ? null : myBp()));
 $('again').addEventListener('click', () => battle && battle.restartOrNext());
 $('back').addEventListener('click', leaveBattle);
 
 addEventListener('keydown', (e) => {
   if (mode === 'hangar') { hangar.keydown(e); return; }
   if (e.repeat) return;
-  if (e.code === 'Escape') { if (mode === 'battle') leaveBattle(); return; }
+  if (e.code === 'Escape') { if (mode === 'battle') leaveBattle(); else if (mode === 'menu' && !(session && session.role)) openHangar(null); return; }
   if (mode === 'menu') { if (e.code === 'Enter') $('go').click(); return; }
   if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
   battle.keydown(e.code);
@@ -263,6 +286,13 @@ function frame(now) {
   }
   requestAnimationFrame(frame);
 }
-refreshDisk().then(() => { showMenu(); requestAnimationFrame(frame); window.__ready = true; });
+// the game opens in the hangar: building is the heart of it; 出战 ▸ goes to the battle menu
+refreshDisk().then(() => {
+  if (!roster().some(r => r.id === pick.me)) pick.me = byName('极点');
+  if (!roster().some(r => r.id === pick.foe)) pick.foe = byName('玄岳');
+  openHangar(entry(pick.me).get());
+  requestAnimationFrame(frame); window.__ready = true;
+});
+window.__showMenu = showMenu;   // test hook
 window.__openHangar = openHangar;
 window.__showPreset = (id) => setShowcase(PRESETS[id]());   // test hook

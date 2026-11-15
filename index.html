@@ -148,6 +148,10 @@
   .jrow { display: grid; grid-template-columns: 1.2em 5.4em minmax(0, 1fr) 3.2em; gap: 6px; align-items: center; font-size: 12px; }
   .jrow.hot { background: rgba(61,224,208,.1); }
   .jrow.off label, .jrow.off output { color: var(--dim); opacity: .55; }
+  .dock { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); display: grid; gap: 6px; justify-items: center;
+    background: var(--glass); border: 1px solid var(--line); padding: 8px 12px; clip-path: var(--cut); }
+  .dock .row { justify-content: center; }
+  .dock .big { font-size: 17px; padding: 8px 26px; letter-spacing: .08em; }
   .hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); font-size: 11px; color: var(--dim); white-space: nowrap; font-family: var(--tech);
     background: var(--glass); padding: 4px 10px; }
   .toast { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); background: var(--glass-2); border: 1px solid var(--line); padding: 6px 14px; font-size: 13px; }
@@ -187,7 +191,7 @@
     </div>
     <button class="btn primary go" id="go">开战</button>
     <button class="btn" id="ladder">AI 天梯</button>
-    <button class="btn" id="toHangar">机库 · 搭建 / 动作编辑</button>
+    <button class="btn" id="toHangar">◂ 回机库</button>
     <button class="btn" id="toOnline">联机对战</button>
     <dl class="keys">
       <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>移动（锁定对手，A/D 绕圈）</dd>
@@ -265,8 +269,15 @@
     <button class="btn" id="hMirror" aria-pressed="true" title="M">镜像</button>
     <button class="btn" id="hTool" title="B 放置 / V 选择">放置</button>
     <span class="grow"></span>
-    <button class="btn primary" id="hTest">试驾</button>
-    <button class="btn" id="hBack">菜单</button>
+  </div>
+  <!-- launch dock (like Skybreak's hangar): you fight with the mech that's on the stand -->
+  <div class="dock" id="hDock">
+    <div class="row"><label for="hMap">地图</label><select id="hMap"></select><button class="btn" id="hOnline">联机对战</button></div>
+    <div class="row go">
+      <button class="btn" id="hTest" title="打一个不动的木桩，什么都不记录">试驾</button>
+      <button class="btn primary big" id="hSortie" title="选对手、模式、难度（Enter）">出战 ▶</button>
+      <button class="btn" id="hLadder">AI 天梯</button>
+    </div>
   </div>
   <div class="palette" id="palette" aria-label="零件"></div>
   <div class="side">
@@ -293,30 +304,30 @@
  "imports": {
   "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
   "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/",
-  "./js/actions.js": "./js/actions.js?v=20261115044000",
-  "./js/ai.js": "./js/ai.js?v=20261115044000",
-  "./js/battle.js": "./js/battle.js?v=20261115044000",
-  "./js/blueprint.js": "./js/blueprint.js?v=20261115044000",
-  "./js/combat.js": "./js/combat.js?v=20261115044000",
-  "./js/config.js": "./js/config.js?v=20261115044000",
-  "./js/hangar.js": "./js/hangar.js?v=20261115044000",
-  "./js/ink.js": "./js/ink.js?v=20261115044000",
-  "./js/main.js": "./js/main.js?v=20261115044000",
-  "./js/maps.js": "./js/maps.js?v=20261115044000",
-  "./js/mech.js": "./js/mech.js?v=20261115044000",
-  "./js/net.js": "./js/net.js?v=20261115044000",
-  "./js/online.js": "./js/online.js?v=20261115044000",
-  "./js/partMesh.js": "./js/partMesh.js?v=20261115044000",
-  "./js/parts.js": "./js/parts.js?v=20261115044000",
-  "./js/presets.js": "./js/presets.js?v=20261115044000",
-  "./js/save.js": "./js/save.js?v=20261115044000",
-  "./js/spec.js": "./js/spec.js?v=20261115044000",
-  "./js/tech.js": "./js/tech.js?v=20261115044000"
+  "./js/actions.js": "./js/actions.js?v=20261115045527",
+  "./js/ai.js": "./js/ai.js?v=20261115045527",
+  "./js/battle.js": "./js/battle.js?v=20261115045527",
+  "./js/blueprint.js": "./js/blueprint.js?v=20261115045527",
+  "./js/combat.js": "./js/combat.js?v=20261115045527",
+  "./js/config.js": "./js/config.js?v=20261115045527",
+  "./js/hangar.js": "./js/hangar.js?v=20261115045527",
+  "./js/ink.js": "./js/ink.js?v=20261115045527",
+  "./js/main.js": "./js/main.js?v=20261115045527",
+  "./js/maps.js": "./js/maps.js?v=20261115045527",
+  "./js/mech.js": "./js/mech.js?v=20261115045527",
+  "./js/net.js": "./js/net.js?v=20261115045527",
+  "./js/online.js": "./js/online.js?v=20261115045527",
+  "./js/partMesh.js": "./js/partMesh.js?v=20261115045527",
+  "./js/parts.js": "./js/parts.js?v=20261115045527",
+  "./js/presets.js": "./js/presets.js?v=20261115045527",
+  "./js/save.js": "./js/save.js?v=20261115045527",
+  "./js/spec.js": "./js/spec.js?v=20261115045527",
+  "./js/tech.js": "./js/tech.js?v=20261115045527"
  }
 }
 </script>
 <script type="module">
-  import('./js/main.js?v=20261115044000').catch(function (e) { console.error(e); window.__moduleFailed && window.__moduleFailed(e); });
+  import('./js/main.js?v=20261115045527').catch(function (e) { console.error(e); window.__moduleFailed && window.__moduleFailed(e); });
 </script>
 </body>
 </html>

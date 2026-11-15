@@ -359,7 +359,7 @@ export class Hangar {
     $('hMirror').onclick = () => this.setMirror(!this.mirror);
     $('hTool').onclick = () => this.setTool(this.tool === 'place' ? 'select' : 'place');
     $('hTest').onclick = () => this.test();
-    $('hBack').onclick = () => this.opts.onBack();
+    if ($('hBack')) $('hBack').onclick = () => this.opts.onBack();
     $('bpName').onchange = () => this.patchBp(b => { b.name = $('bpName').value.slice(0, 24) || '新机体'; });
     $('loadSel').onchange = (e) => { const r = roster().find(x => x.id === e.target.value); if (r) { this.setBp(r.get()); } e.target.value = ''; };
     $('tabBuild').onclick = () => this.setTab('build');
@@ -377,11 +377,16 @@ export class Hangar {
     this.applyPose(); this.attachSelection(); this.renderSide();
   }
 
-  test() {
+  // the mech on the stand, ready to fight (a copy), or null with a toast saying why it can't
+  ready() {
     const st = this.mech.stats;
-    if (st.issues.length) { this.toast('不能出战：' + st.issues.join('；')); return; }
+    if (st.issues.length) { this.toast('不能出战：' + st.issues.join('；')); return null; }
     this.bp.name = $('bpName').value || this.bp.name;
-    this.opts.onTest(clone(this.bp));
+    return clone(this.bp);
+  }
+  test() {
+    const bp = this.ready();
+    if (bp) this.opts.onTest(bp);
   }
 
   keydown(e) {
