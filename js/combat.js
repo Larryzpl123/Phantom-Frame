@@ -64,6 +64,8 @@ export class Combat {
     this.shake = 0;
     this.time = 0;
     this.stats = { cut: 0, hits: 0 };
+    this.nid = 0;
+    this.viewOnly = false;      // online guest: draw weapons and shots, decide nothing (the host does)
     this.geo = {
       gun: new THREE.SphereGeometry(1, 8, 6),
       cannon: new THREE.SphereGeometry(1, 12, 8),
@@ -75,7 +77,7 @@ export class Combat {
     this.mechs.push(m);
     m.trails = new Map();
     for (const rec of m.parts.values()) if (rec.weapon && (rec.weapon.kind === 'edge' || rec.weapon.kind === 'blunt'))
-      m.trails.set(rec.id, m.ink ? this.fx.makeTrail('#1f5f5d') : this.fx.makeTrail(m.team === 0 ? '#3de0d0' : '#ff8a3d', true));
+      m.trails.set(rec.id, m.ink ? this.fx.makeTrail('#1f5f5d') : this.fx.makeTrail((m.colorTeam ?? m.team) === 0 ? '#3de0d0' : '#ff8a3d', true));
   }
 
   // ----- firing -----
@@ -142,7 +144,7 @@ export class Combat {
   }
 
   spawn(type, owner, pos, vel, r, dmg, life) {
-    const hot = owner.team === 0 ? '#9ffbf2' : '#ffc27a';
+    const hot = (owner.colorTeam ?? owner.team) === 0 ? '#9ffbf2' : '#ffc27a';
     const mat = type === 'sling'
       ? new THREE.MeshBasicMaterial({ color: '#b49bff', transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending })
       : new THREE.MeshBasicMaterial({ color: type === 'cannon' ? '#ffb36b' : hot });
@@ -150,8 +152,9 @@ export class Combat {
     mesh.scale.set(r, r, type === 'gun' ? r * 7 : r);
     mesh.position.copy(pos);
     this.scene.add(mesh);
-    const s = { type, owner, pos: mesh.position, prev: pos.clone(), vel, r, dmg, life, mesh, dead: false };
+    const s = { type, owner, pos: mesh.position, prev: pos.clone(), vel, r, dmg, life, mesh, dead: false, nid: ++this.nid };
     this.shots.push(s);
+    this.onShot && this.onShot(s);
     return s;
   }
 
@@ -188,7 +191,7 @@ export class Combat {
           P0.lerpVectors(rec.prevA, rec.prevB, u); P1.lerpVectors(A, B, u);
           const v = P0.distanceTo(P1) / Math.max(1e-4, dt);
           rec.samples[i] = v; vmax = Math.max(vmax, v);
-          if (v < CFG.melee.minSpeed) continue;
+          if (v < CFG.melee.minSpeed || this.viewOnly) continue;
           for (const o of this.mechs) {
             if (o === m || o.dead || o.team === m.team) continue;
             if (o.pos.distanceTo(m.pos) > 16) continue;
@@ -232,7 +235,7 @@ export class Combat {
     }
     this.hitStop = Math.max(this.hitStop, CFG.melee.hitStop * Math.min(2, dmg / 12));
     this.shake = Math.max(this.shake, Math.min(0.5, dmg / 50));
-    this.onHit && this.onHit(o, part, dmg, from);
+    this.onHit && this.onHit(o, part, dmg, from, at, dir);
   }
 
   // can an edge of mech o cut the shot whose path is p0->p1 ?
@@ -263,6 +266,10 @@ export class Combat {
       if (s.type === 'sling') s.mesh.rotation.y += dt * 9;
       else s.mesh.lookAt(_a.copy(s.pos).add(s.vel));
       let done = false;
+      if (this.viewOnly) {                       // guest: the host says when a shot ends ('sx'); just fly
+        if (s.life <= 0) { s.dead = true; this.scene.remove(s.mesh); s.mesh.material.dispose(); }
+        continue;
+      }
       for (const o of this.mechs) {
         if (o === s.owner || o.dead || o.team === s.owner.team) continue;
         if (o.pos.distanceTo(s.pos) > 14) continue;
@@ -273,7 +280,7 @@ export class Combat {
             if (o.ink) { this.fx.splash(cut, s.vel.clone().normalize().negate(), 8, '#e6fffa', 0.35, 7); this.fx.splash(cut, null, 4, '#121a1c', 0.3, 4); }
             else { this.fx.sparks(cut, s.vel.clone().normalize().negate(), 10, '#7ff5ea', 0.2, 8); }
             this.fx.flare(cut, '#ffffff', 1.2);
-            this.onCut && this.onCut(o, s);
+            this.onCut && this.onCut(o, s, cut);
             done = true; break;
           }
         }
@@ -305,7 +312,7 @@ export class Combat {
         else this.fx.sparks(s.pos.setY(0.1), null, 3, '#ffc27a', 0.15, 4);
         done = true;
       }
-      if (done || s.life <= 0) { s.dead = true; this.scene.remove(s.mesh); s.mesh.material.dispose(); }
+      if (done || s.life <= 0) { s.dead = true; this.scene.remove(s.mesh); s.mesh.material.dispose(); this.onShotEnd && this.onShotEnd(s); }
     }
     this.shots = this.shots.filter(s => !s.dead);
   }
@@ -337,6 +344,17 @@ export class Combat {
     o.player.stop();
     this.fx.flare(at, '#b49bff', 3); this.fx.sparks(at, dir, 16, '#b49bff', 0.3, 7);
     this.onGravity && this.onGravity(o, s);
+  }
+
+  // online guest: the host says shot `nid` ended at p (cannon shells burst there)
+  endShot(nid, p) {
+    const s = this.shots.find(x => x.nid === nid && !x.dead);
+    const at = p ? new THREE.Vector3(...p) : s ? s.pos.clone() : null;
+    if (s) { s.dead = true; this.scene.remove(s.mesh); s.mesh.material.dispose(); }
+    if (!at) return;
+    const type = s ? s.type : 'gun';
+    if (type === 'cannon') { this.fx.flare(at, '#ffb36b', 4); this.fx.sparks(at, null, 16, '#ffb36b', 0.3, 10); this.shake = Math.max(this.shake, 0.3); }
+    else this.fx.sparks(at, null, 3, '#ffc27a', 0.15, 4);
   }
 
   clear() { for (const s of this.shots) { this.scene.remove(s.mesh); } this.shots = []; this.mechs = []; this.rehit.clear(); }

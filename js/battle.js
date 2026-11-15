@@ -6,6 +6,10 @@
 // opts.rounds:   round wins needed (ladder: 2 = best of three)
 // opts.ladder:   { level } — the AI ladder; past the skill cap the AI's HP and damage grow (see ai.js aiSkill)
 // opts.map:      arena key (see maps.js)
+// opts.meIndex:  which fighter this screen plays (default 0). Online:
+// opts.online:   { role: 'host' | 'guest', net } — see js/online.js. The host runs the whole fight; fighters with
+//                { remote: peer } are driven by that guest's inputs. A guest simulates nothing: it draws the
+//                host's snapshots and sends its own inputs.
 
 import * as THREE from 'three';
 import { CFG } from './config.js';
@@ -35,6 +39,9 @@ export class Battle {
     this.score = new Map();
     this.round = 1;
     this.camPos = new THREE.Vector3(0, 5, -22); this.camLook = new THREE.Vector3();
+    this.online = opts.online || null;
+    this.guest = !!(this.online && this.online.role === 'guest');
+    if (this.guest) this.combat.viewOnly = true;
     this.spawn();
   }
 
@@ -50,7 +57,7 @@ export class Battle {
     F.forEach((f, i) => {
       const team = this.teamOf(i);
       const m = new Mech(f.bp, this.scene, { team });
-      m.colorTeam = team === this.teamOf(0) ? 0 : 1;
+      m.colorTeam = team === this.teamOf(this.opts.meIndex || 0) ? 0 : 1;
       m.index = i;
       // spawn points: teams face each other across the arena; within a team, side by side
       const ti = teams.indexOf(team), nT = teams.length;
@@ -63,7 +70,7 @@ export class Battle {
       m.pos.copy(base).addScaledVector(across, (k - (n - 1) / 2) * 5);
       m.yaw = Math.atan2(-base.x, -base.z);
       this.arena.place && this.arena.place(m.pos);
-      if (i > 0 && this.opts.ladder) {
+      if (i > 0 && this.opts.ladder && !this.online) {
         const S = aiSkill(this.opts.ladder.level);
         m.dmgMul = S.dmgMul;
         if (S.hpMul !== 1) for (const r of m.parts.values()) { r.hp *= S.hpMul; r.maxHp *= S.hpMul; }
@@ -72,8 +79,11 @@ export class Battle {
       this.hook(m);
       this.mechs.push(m);
     });
-    this.me = this.mechs[0];
-    for (let i = 1; i < this.mechs.length; i++) {
+    const meI = this.opts.meIndex || 0;
+    this.me = this.mechs[meI];
+    for (let i = 0; i < this.mechs.length; i++) {
+      if (i === meI || this.guest) continue;                 // a guest runs no AI: the host does
+      if (F[i].remote) { this.mechs[i].remote = { peer: F[i].remote, intent: { move: new THREE.Vector3(), face: 0, jump: false, hover: false, dash: null } }; continue; }
       const lv = F[i].level ?? 8;
       const ai = new AI(this.mechs[i], this.nearestEnemy(this.mechs[i]), this.combat, lv);
       ai.dummy = lv <= 0;
@@ -83,6 +93,7 @@ export class Battle {
     this.timeScale = 1; this.over = false; this.roundOver = false; this.t = 0; this.roundT = 0;
     this.hud.result.hidden = true;
     this.buildHud();
+    if (this.online) this.online.onSpawn(this);
   }
 
   hook(m) {
@@ -106,6 +117,14 @@ export class Battle {
     m.onHandOver = () => { if (m === this.me) this.flash('换手'); };
   }
 
+  // online: a guest left mid-match, an AI takes over that mech
+  takeOverByAI(m, level) {
+    m.remote = null;
+    for (const k of [...m.player.held || []]) m.player.release(k);
+    const ai = new AI(m, this.nearestEnemy(m), this.combat, level);
+    this.ais.push(ai);
+  }
+
   enemiesOf(m) { return this.mechs.filter(o => o !== m && !o.dead && o.team !== m.team); }
   nearestEnemy(m) {
     let best = null, bd = Infinity;
@@ -122,9 +141,14 @@ export class Battle {
     if (code === 'ShiftLeft' || code === 'ShiftRight') this.wantDash = true;
     if (code === 'Tab') { this.cycleTarget(); return; }
     if (this.over) { if (code === 'KeyR') this.restartOrNext(); return; }
+    if (this.guest) { this.online.key(code, true); return; }
     this.me.player.press(code);
   }
-  keyup(code) { code = KEYMAP[code] || code; this.keys.delete(code); this.me.player.release(code); }
+  keyup(code) {
+    code = KEYMAP[code] || code; this.keys.delete(code);
+    if (this.guest) { this.online.key(code, false); return; }
+    this.me.player.release(code);
+  }
 
   cycleTarget() {
     const list = this.enemiesOf(this.me).sort((a, b) => a.pos.distanceTo(this.me.pos) - b.pos.distanceTo(this.me.pos));
@@ -135,6 +159,7 @@ export class Battle {
   }
 
   restartOrNext() {
+    if (this.guest) return;                                   // only the host restarts an online match
     if (this.ladderWon && this.opts.onNext) this.opts.onNext(); else this.opts.onRestart && this.opts.onRestart();
   }
 
@@ -160,6 +185,7 @@ export class Battle {
 
   // ----- loop -----
   update(rawDt) {
+    if (this.guest) { this.online.guestUpdate(this, rawDt); return; }
     let dt = Math.min(rawDt, 1 / 30) * this.timeScale;
     if (this.combat.hitStop > 0) { this.combat.hitStop -= rawDt; dt *= 0.08; }
     this.t += dt; this.roundT += dt;
@@ -177,6 +203,7 @@ export class Battle {
     }
     this.me.update(dt, it);
     for (const ai of this.ais) ai.me.update(dt, ai.intent);
+    for (const m of this.mechs) if (m.remote && m !== this.me) { m.update(dt, m.remote.intent); m.remote.intent.jump = false; m.remote.intent.dash = null; }
     it.jump = false;
     this.separate();
     this.arena.collide && this.arena.collide(this.mechs);
@@ -196,6 +223,7 @@ export class Battle {
     if (this.over) { this.overT += rawDt; this.timeScale = Math.min(1, 0.15 + this.overT * 0.4); }
     this.updateCamera(rawDt);
     this.updateHud();
+    if (this.online) this.online.hostTick(this, rawDt);
   }
 
   separate() {
@@ -251,6 +279,7 @@ export class Battle {
     const loser = m, p = loser.center();
     if (loser.ink) this.fx.splash(p, null, 22, '#121a1c', 0.8, 9); else { this.fx.flare(p, '#ffb36b', 7); this.fx.sparks(p, null, 40, '#ffb36b', 0.35, 12); }
     if (m === this.target) this.target = this.nearestEnemy(this.me);
+    if (this.guest) return;                                   // the host decides rounds
     const alive = this.aliveTeams();
     if (alive.length <= 1 && !this.roundOver) this.endRound(alive[0]);
   }
@@ -267,6 +296,7 @@ export class Battle {
 
   endRound(winner) {
     this.roundOver = true;
+    if (this.online && !this.guest) this.online.send({ t: 'round', w: winner ?? null }, true);
     if (winner !== undefined) this.score.set(winner, (this.score.get(winner) || 0) + 1);
     const need = this.opts.rounds || 1;
     const myTeam = this.me.team;
@@ -274,7 +304,7 @@ export class Battle {
     if (!decided) {
       this.flash(winner === myTeam ? `第 ${this.round} 回合 胜` : `第 ${this.round} 回合 负`);
       this.timeScale = 0.3;
-      setTimeout(() => this.nextRound(), CFG.match.roundDelay * 1000);
+      if (!this.guest) setTimeout(() => this.nextRound(), CFG.match.roundDelay * 1000);
       return;
     }
     this.over = true; this.overT = 0; this.timeScale = 0.15;
@@ -291,7 +321,7 @@ export class Battle {
       h.resultSub.textContent = L ? `天梯第 ${L.level} 关 · ${aiSkill(L.level).rank} · ${sc}${won ? ' · 下一关已解锁' : ''}`
         : this.mode === 'duel' ? (won ? `${this.me.name} 击破 ${this.mechs[1].name}` : `${this.mechs[1].name} 击破 ${this.me.name}`) + (sc ? ` · ${sc}` : '')
         : (won ? '我方获胜' : '我方落败');
-      h.again.textContent = this.ladderWon ? '下一关 (R)' : '再来一局 (R)';
+      h.again.textContent = this.ladderWon ? '下一关 (R)' : this.guest ? '等房主开下一局' : '再来一局 (R)';
     }, 900);
   }
 
@@ -304,6 +334,7 @@ export class Battle {
 
   nextRound() {
     if (this.disposed) return;
+    if (this.online && !this.guest) this.online.send({ t: 'next' }, true);
     for (const m of this.mechs) m.dispose();
     this.combat.clear(); this.fx.clear();
     this.round++;
@@ -353,15 +384,17 @@ export class Battle {
 
   updateHud() {
     const h = this.hud;
-    const pct = (m) => Math.max(0, m.coreRec.hp / m.coreRec.maxHp);
+    const pct = (m) => m.net ? m.net.core : Math.max(0, m.coreRec.hp / m.coreRec.maxHp);
     const B = this.target || this.mechs[1];
     h.hpA.style.transform = `scaleX(${pct(this.me)})`;
     h.hpB.style.transform = `scaleX(${B ? pct(B) : 0})`;
-    h.intA.textContent = `机体完整度 ${(this.integrity(this.me) * 100).toFixed(0)}%`;
-    h.intB.textContent = B ? `机体完整度 ${(this.integrity(B) * 100).toFixed(0)}%` : '';
+    const ig = (m) => m.net ? m.net.integ : this.integrity(m);
+    h.intA.textContent = `机体完整度 ${(ig(this.me) * 100).toFixed(0)}%`;
+    h.intB.textContent = B ? `机体完整度 ${(ig(B) * 100).toFixed(0)}%` : '';
     for (const m of this.mechs) if (m.hudRow) m.hudRow.style.transform = `scaleX(${m.dead ? 0 : pct(m)})`;
     h.boost.style.transform = `scaleX(${this.me.boost / CFG.thrust.cap})`;
     let heat = 0; for (const r of this.me.parts.values()) if (r.weapon && r.weapon.kind === 'gun') heat = Math.max(heat, r.heat / CFG.gun.overheat);
+    if (this.me.net) heat = this.me.net.heat;
     h.heatWrap.hidden = heat <= 0.01;
     h.heat.style.transform = `scaleX(${heat})`;
     const ph = this.me.phantomRoots.length > 0;

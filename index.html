@@ -57,6 +57,9 @@
   .roster button small { color: var(--dim); font-size: 10px; }
   .roster button[aria-pressed="true"] { border-color: var(--cyan); background: rgba(61,224,208,.12); }
   .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .roomcode { font-size: 28px; letter-spacing: .25em; color: var(--cyan); }
+  .players { margin: 0; padding-left: 1.4em; display: grid; gap: 3px; }
+  .players li span { color: var(--dim); font-size: 12px; margin-left: 6px; }
   .go { font-family: var(--tech); font-size: 20px; letter-spacing: .3em; padding: 10px 0; }
   .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; font-size: 12px; color: var(--dim); align-items: center; margin: 0; }
   .keys dd { margin: 0; }
@@ -185,6 +188,7 @@
     <button class="btn primary go" id="go">开战</button>
     <button class="btn" id="ladder">AI 天梯</button>
     <button class="btn" id="toHangar">机库 · 搭建 / 动作编辑</button>
+    <button class="btn" id="toOnline">联机对战</button>
     <dl class="keys">
       <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>移动（锁定对手，A/D 绕圈）</dd>
       <dt><kbd>空格</kbd></dt><dd>跳；空中按住 = 推进器悬停</dd>
@@ -193,6 +197,32 @@
       <dt><kbd>Esc</kbd></dt><dd>回菜单　结算后 <kbd>R</kbd> 再来</dd>
     </dl>
     <p class="note">伤害看刃速。刀剑和枪杆高速扫过子弹会劈掉它，转枪能挡正面；炮弹只有刀剑能劈。零件被打断会掉落，核心被毁即败。</p>
+  </div>
+  <div class="panel" id="onlinePanel" hidden>
+    <h2>联机对战</h2>
+    <p class="note">出战机体：<b id="onMech"></b>（回主菜单换）。房主的电脑跑整场战斗，其他人发操作、看画面；房主以外的人动作会慢一个网络来回。</p>
+    <div class="row" id="onEntry">
+      <button class="btn primary" id="onCreate">创建房间</button>
+      <input type="text" id="onCode" maxlength="6" placeholder="房间号" style="width:7em;text-transform:uppercase">
+      <button class="btn" id="onJoin">加入</button>
+    </div>
+    <div id="onRoom" hidden>
+      <div class="row"><span class="eyebrow">房间号</span><b id="onRoomCode" class="roomcode"></b></div>
+      <ol id="onPlayers" class="players"></ol>
+      <div class="row" id="onHostSet">
+        <label for="onMode">模式</label>
+        <select id="onMode"><option value="duel">单挑 1v1</option><option value="team2">组队 2v2</option><option value="ffa">混战（4 台）</option><option value="team3">组队 3v3</option></select>
+        <label for="onMap">地图</label><select id="onMap"></select>
+        <label for="onRounds">局数</label><select id="onRounds"><option value="1">一局定胜负</option><option value="2" selected>三局两胜</option></select>
+        <label for="onFill">空位 AI</label>
+        <select id="onFill"><option value="2">缓</option><option value="8" selected>常</option><option value="16">烈</option><option value="25">狂</option></select>
+      </div>
+      <p class="note" id="onSetView"></p>
+      <button class="btn primary" id="onStart">开始</button>
+      <button class="btn warn" id="onLeave">离开房间</button>
+    </div>
+    <p class="note" id="onStatus"></p>
+    <button class="btn" id="onBack">返回</button>
   </div>
 </section>
 
@@ -262,28 +292,30 @@
  "imports": {
   "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
   "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/",
-  "./js/actions.js": "./js/actions.js?v=20261115034408",
-  "./js/ai.js": "./js/ai.js?v=20261115034408",
-  "./js/battle.js": "./js/battle.js?v=20261115034408",
-  "./js/blueprint.js": "./js/blueprint.js?v=20261115034408",
-  "./js/combat.js": "./js/combat.js?v=20261115034408",
-  "./js/config.js": "./js/config.js?v=20261115034408",
-  "./js/hangar.js": "./js/hangar.js?v=20261115034408",
-  "./js/ink.js": "./js/ink.js?v=20261115034408",
-  "./js/main.js": "./js/main.js?v=20261115034408",
-  "./js/maps.js": "./js/maps.js?v=20261115034408",
-  "./js/mech.js": "./js/mech.js?v=20261115034408",
-  "./js/partMesh.js": "./js/partMesh.js?v=20261115034408",
-  "./js/parts.js": "./js/parts.js?v=20261115034408",
-  "./js/presets.js": "./js/presets.js?v=20261115034408",
-  "./js/save.js": "./js/save.js?v=20261115034408",
-  "./js/spec.js": "./js/spec.js?v=20261115034408",
-  "./js/tech.js": "./js/tech.js?v=20261115034408"
+  "./js/actions.js": "./js/actions.js?v=20261115040629",
+  "./js/ai.js": "./js/ai.js?v=20261115040629",
+  "./js/battle.js": "./js/battle.js?v=20261115040629",
+  "./js/blueprint.js": "./js/blueprint.js?v=20261115040629",
+  "./js/combat.js": "./js/combat.js?v=20261115040629",
+  "./js/config.js": "./js/config.js?v=20261115040629",
+  "./js/hangar.js": "./js/hangar.js?v=20261115040629",
+  "./js/ink.js": "./js/ink.js?v=20261115040629",
+  "./js/main.js": "./js/main.js?v=20261115040629",
+  "./js/maps.js": "./js/maps.js?v=20261115040629",
+  "./js/mech.js": "./js/mech.js?v=20261115040629",
+  "./js/net.js": "./js/net.js?v=20261115040629",
+  "./js/online.js": "./js/online.js?v=20261115040629",
+  "./js/partMesh.js": "./js/partMesh.js?v=20261115040629",
+  "./js/parts.js": "./js/parts.js?v=20261115040629",
+  "./js/presets.js": "./js/presets.js?v=20261115040629",
+  "./js/save.js": "./js/save.js?v=20261115040629",
+  "./js/spec.js": "./js/spec.js?v=20261115040629",
+  "./js/tech.js": "./js/tech.js?v=20261115040629"
  }
 }
 </script>
 <script type="module">
-  import('./js/main.js?v=20261115034408').catch(function (e) { console.error(e); window.__moduleFailed && window.__moduleFailed(e); });
+  import('./js/main.js?v=20261115040629').catch(function (e) { console.error(e); window.__moduleFailed && window.__moduleFailed(e); });
 </script>
 </body>
 </html>

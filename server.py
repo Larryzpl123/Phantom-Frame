@@ -9,10 +9,17 @@ Security: listens on 127.0.0.1 only. POST needs the custom header X-Mech: 1 (bro
 cross-site requests and this server never answers the preflight, so other websites can't write here).
 The folder name comes from a strict whitelist (letters, digits, CJK, - and _), never a path; reserved
 folders (js, test, ...) are refused; 512 KB limit; written to a temp file then atomically replaced.
+
+3. /room/create, /room/join, /room/send, /room/recv: an in-memory copy of the signaling mailbox that online
+   play uses (the real one is Skybreak's Cloudflare Worker). Only for testing on this machine: open the game
+   with ?signal=local and two tabs can connect to each other without the internet.
 """
 import http.server
 import json
 import os
+import random
+import secrets
+import threading
 import re
 import sys
 
@@ -29,6 +36,43 @@ def mech_dirs():
         if d not in RESERVED and NAME_RE.match(d) and os.path.isfile(f):
             out.append({'name': d, 'path': d + '/' + d + '.json'})
     return out
+
+
+ROOMS = {}                       # code -> {'peers': {peer: key}, 'box': {peer: [msg]}}
+ROOM_LOCK = threading.Lock()
+
+
+def room_call(path, body):
+    """Same requests and answers as the Worker's /room/* (see js/net.js)."""
+    with ROOM_LOCK:
+        if path == '/room/create':
+            code = ''.join(random.choice('ABCDEFGHJKMNPQRSTUVWXYZ') for _ in range(5))
+            key = secrets.token_hex(8)
+            ROOMS[code] = {'peers': {'h': key}, 'box': {'h': []}}
+            return 200, {'code': code, 'peer': 'h', 'key': key}
+        if path == '/room/join':
+            room = ROOMS.get(str(body.get('code', '')).upper())
+            if not room:
+                return 404, {'error': 'no such room'}
+            if len(room['peers']) >= 4:
+                return 409, {'error': 'room is full'}
+            peer = 'g%d' % len(room['peers'])
+            key = secrets.token_hex(8)
+            room['peers'][peer] = key
+            room['box'][peer] = []
+            return 200, {'code': str(body['code']).upper(), 'peer': peer, 'key': key}
+        room = ROOMS.get(str(body.get('code', '')).upper())
+        if not room or room['peers'].get(body.get('peer')) != body.get('key'):
+            return 401, {'error': 'not in this room'}
+        if path == '/room/send':
+            if body.get('to') not in room['box']:
+                return 404, {'error': 'no such peer'}
+            room['box'][body['to']].append({'from': body['peer'], 'data': body.get('data', '')})
+            return 200, {'ok': True}
+        if path == '/room/recv':
+            msgs, room['box'][body['peer']] = room['box'][body['peer']], []
+            return 200, {'messages': msgs}
+    return 404, {'error': 'unknown'}
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -51,7 +95,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if self.path.split('?')[0] != '/api/mechs':
+        path = self.path.split('?')[0]
+        if path.startswith('/room/'):
+            try:
+                n = int(self.headers.get('Content-Length', '0'))
+                body = json.loads(self.rfile.read(n).decode('utf-8')) if 0 < n <= 65536 else {}
+            except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+                body = {}
+            status, out = room_call(path, body if isinstance(body, dict) else {})
+            data = json.dumps(out).encode('utf-8')
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if path != '/api/mechs':
             self.send_error(404)
             return
         if self.headers.get('X-Mech') != '1':

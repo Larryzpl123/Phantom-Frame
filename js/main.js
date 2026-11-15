@@ -9,6 +9,7 @@ import { roster, refreshDisk, ladderProgress, ladderBeat } from './save.js';
 import { aiSkill, ladderFoe } from './ai.js';
 import { MAPS, MAP_KEYS } from './maps.js';
 import { Hangar } from './hangar.js';
+import { OnlineSession } from './online.js';
 
 const $ = (id) => document.getElementById(id);
 const renderer = new THREE.WebGLRenderer({ antialias: true, canvas: $('view') });
@@ -74,6 +75,7 @@ function showMenu() {
   if (battle) { battle.dispose(); battle = null; }
   if (hangar) hangar.hide();
   $('menu').hidden = false;
+  showPanel(session && session.role ? 'online' : 'main');
   if (!roster().some(r => r.id === pick.me)) pick.me = byName('极点');
   if (!roster().some(r => r.id === pick.foe)) pick.foe = byName('玄岳');
   renderRoster();
@@ -112,6 +114,69 @@ function ladderOpts(level) {
 }
 const CFG_LADDER_ROUNDS = 2;
 
+// ---------- online ----------
+let session = null;
+function showPanel(which) {
+  document.querySelector('#menu > .panel:not(#onlinePanel)').hidden = which !== 'main';
+  $('onlinePanel').hidden = which !== 'online';
+  if (which === 'online') { $('onMech').textContent = entry(pick.me).name; renderOnline(); }
+}
+function onStatus(t) { $('onStatus').textContent = t || ''; }
+function fillBps() { return roster().map(r => r.get()); }
+function renderOnline() {
+  const S = session, inRoom = !!(S && S.role);
+  $('onEntry').hidden = inRoom; $('onRoom').hidden = !inRoom;
+  if (!inRoom) return;
+  const L = S.lobbyView();
+  $('onRoomCode').textContent = (L && L.code) || S.code || '…';
+  const host = S.role === 'host';
+  $('onHostSet').hidden = !host; $('onStart').hidden = !host;
+  const list = $('onPlayers'); list.innerHTML = '';
+  for (const p of (L ? L.players : [])) {
+    const li = document.createElement('li');
+    li.textContent = p.name;
+    const tag = document.createElement('span'); tag.textContent = p.peer === 'h' ? '房主' : '玩家';
+    li.appendChild(tag); list.appendChild(li);
+  }
+  const set = L ? L.set : null;
+  const modeName = { duel: '单挑 1v1', team2: '组队 2v2', ffa: '混战', team3: '组队 3v3' };
+  $('onSetView').textContent = set ? `${modeName[set.mode]} · ${MAPS[set.map] ? MAPS[set.map].name : set.map} · ${set.rounds > 1 ? '三局两胜' : '一局'}${host ? '' : ' · 等房主开始'}` : '';
+  if (host && L && set.mode === 'duel' && L.players.length > 2) $('onSetView').textContent += ' · 单挑只上前两人';
+}
+$('onMap').innerHTML = MAP_KEYS.map(k => `<option value="${k}">${MAPS[k].name}</option>`).join('');
+$('toOnline').addEventListener('click', () => { onStatus(''); showPanel('online'); });
+$('onBack').addEventListener('click', () => { if (session && session.role) session.leave(); renderOnline(); showPanel('main'); });
+function newSession() {
+  if (session && session.role) session.leave();
+  session = new OnlineSession({
+    onLobby: () => renderOnline(),
+    status: onStatus,
+    onStart: (opts) => startBattle(opts, 'online'),
+    onClosed: (why) => { onStatus(why); if (mode === 'battle' && battle) { battle.dispose(); battle = null; showMenu(); } renderOnline(); },
+  });
+  return session;
+}
+const hostSettings = () => ({ mode: $('onMode').value, map: $('onMap').value, rounds: +$('onRounds').value, fill: +$('onFill').value });
+$('onCreate').addEventListener('click', async () => {
+  const S = newSession();
+  onStatus('正在创建房间…');
+  try { S.settings = hostSettings(); await S.create(entry(pick.me).get()); onStatus('把房间号发给朋友，他们点「加入」。'); }
+  catch (e) { onStatus('创建失败：' + e.message); S.leave(); }
+  renderOnline();
+});
+$('onJoin').addEventListener('click', async () => {
+  const code = $('onCode').value.trim();
+  if (!code) { onStatus('先填房间号'); return; }
+  const S = newSession();
+  onStatus('正在连接房主…');
+  try { await S.join(code, entry(pick.me).get()); onStatus('已连上，等房主开始。'); }
+  catch (e) { onStatus('加入失败：' + e.message); S.leave(); }
+  renderOnline();
+});
+for (const id of ['onMode', 'onMap', 'onRounds', 'onFill']) $(id).addEventListener('change', () => session && session.role === 'host' && session.setSettings(hostSettings()));
+$('onStart').addEventListener('click', () => session && session.start(fillBps()));
+$('onLeave').addEventListener('click', () => { if (session) session.leave(); onStatus('已离开房间'); renderOnline(); });
+
 function startBattle(opts, from = 'menu') {
   if (battle) battle.dispose();
   if (hangar) hangar.hide();
@@ -120,8 +185,9 @@ function startBattle(opts, from = 'menu') {
   lastFight = { opts, from };
   mode = 'battle';
   const L = opts.ladder;
+  const online = opts.online;
   battle = new Battle(renderer, Object.assign({}, opts, {
-    onRestart: () => startBattle(L ? ladderOpts(L.level) : lastFight.opts, lastFight.from),
+    onRestart: online ? () => online.start(fillBps()) : () => startBattle(L ? ladderOpts(L.level) : lastFight.opts, lastFight.from),
     onWin: L ? () => ladderBeat(L.level) : null,
     onNext: L ? () => startBattle(ladderOpts(L.level + 1), lastFight.from) : null,
   }), hud);
@@ -129,6 +195,11 @@ function startBattle(opts, from = 'menu') {
 }
 function leaveBattle() {
   if (battle) { battle.dispose(); battle = null; }
+  if (returnTo === 'online') {
+    if (session && session.role === 'host') session.endMatch();
+    else if (session && session.role === 'guest') { session.leave(); onStatus('已离开房间'); }
+    showMenu(); return;
+  }
   if (returnTo === 'hangar') openHangar(); else showMenu();
 }
 
@@ -167,7 +238,7 @@ addEventListener('keydown', (e) => {
   if (['Space', 'Tab'].includes(e.code)) e.preventDefault();
   battle.keydown(e.code);
 });
-addEventListener('keyup', (e) => { if (mode === 'battle') battle.keyup(e.code); else if (mode === 'hangar') hangar.keyup(e); });
+addEventListener('keyup', (e) => { if (mode === 'battle' && battle) battle.keyup(e.code); else if (mode === 'hangar') hangar.keyup(e); });
 $('view').addEventListener('mousedown', (e) => { if (mode === 'battle') battle.keydown('Mouse' + e.button); });
 addEventListener('mouseup', (e) => { if (mode === 'battle') battle.keyup('Mouse' + e.button); });
 $('view').addEventListener('contextmenu', (e) => e.preventDefault());

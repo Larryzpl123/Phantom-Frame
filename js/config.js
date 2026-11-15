@@ -5,6 +5,9 @@ export const CFG = {
   g: 26,                       // gravity (arcade, heavier than real so jumps feel weighty)
 
   arena: { radius: 46 },
+  // online play (js/net.js, js/online.js). signal = the mailbox used to swap WebRTC offers: Skybreak's Worker.
+  // The host runs the whole fight; guests send inputs and draw the host's snapshots, shown `delay` s behind.
+  net: { signal: 'https://skybreak-lb.larryzhong.workers.dev', rate: 20, inputRate: 30, delay: 0.1, maxPlayers: 4 },
 
   build: {
     budgetDefault: 200,        // core load budget (see parts.js core.budget)

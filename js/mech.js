@@ -216,6 +216,49 @@ export class Mech {
 
   forward(out = new THREE.Vector3()) { return out.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
 
+  // ----- online: the host sends this pose, guests draw it (see js/online.js) -----
+  get netJoints() {
+    if (!this._netJ) this._netJ = [...this.parts.values()].filter(r => r.joint).map(r => r.id).sort((a, b) => a - b);
+    return this._netJ;
+  }
+  netState() {
+    const R = (x) => Math.round(x * 1000) / 1000;
+    let heat = 0; for (const r of this.parts.values()) if (r.weapon && r.weapon.kind === 'gun') heat = Math.max(heat, r.heat / CFG.gun.overheat);
+    let a = 0, b = 0; for (const r of this.parts.values()) { b += r.maxHp; if (r.alive) a += Math.max(0, r.hp); }
+    const out = [R(this.pos.x), R(this.pos.y), R(this.pos.z), R(this.yaw), R(this.yawOff || 0),
+      R(this.body.position.y), R(this.body.rotation.z), R(this.body.rotation.x), this.phantomOn ? 1 : 0,
+      R(this.boost), R(this.ki), R(heat), R(Math.max(0, this.coreRec.hp / this.coreRec.maxHp)), R(a / b), R(this.vel.dot(this.forward(_v)))];
+    for (const id of this.netJoints) out.push(R(this.parts.get(id).joint.a));
+    return out;
+  }
+  // a = netState() from the host (already interpolated); dt only drives the shader clock and hit flash
+  applyNet(a, dt) {
+    this.pos.set(a[0], a[1], a[2]); this.yaw = a[3]; this.yawOff = a[4];
+    this.root.rotation.y = a[3] + a[4];
+    this.body.position.y = a[5]; this.body.rotation.z = a[6]; this.body.rotation.x = a[7];
+    this.body.updateMatrix();
+    const J = this.netJoints;
+    for (let i = 0; i < J.length; i++) {
+      const r = this.parts.get(J[i]);
+      r.joint.a = a[15 + i]; r.rotor.matrix.makeRotationAxis(AXIS_X, r.joint.a);
+    }
+    if (this.wheels.length) {
+      for (const w of this.wheels) {
+        if (!w.alive) continue;
+        const rr = Math.abs(PARTS.wheel.size[0] * w.pt.s[0]) / 2;
+        w.spinNode.rotation.y += (a[14] / rr) * dt * (w.pt.p[0] >= 0 ? 1 : -1);
+      }
+    }
+    this.root.updateMatrixWorld(true);
+    this.shared.uBodyInv.value.copy(this.body.matrixWorld).invert();
+    this.shared.uTime.value += dt;
+    this.shared.uFlash.value = Math.max(0, this.shared.uFlash.value - dt * 6);
+    if (!this.ink) for (const mt of this.mats.values()) if (mt.emissiveIntensity === 1) mt.emissive.setScalar(this.shared.uFlash.value * 0.8);
+    if ((a[8] === 1) !== this.phantomOn) this.setPhantom(a[8] === 1);
+    this.boost = a[9]; this.ki = a[10];
+    this.net = { heat: a[11], core: a[12], integ: a[13] };
+  }
+
   // ----- per frame -----
   // intent: { move: Vector3 (world xz, length<=1), face: yaw or null, jump, hover, dash: Vector3|null }
   update(dt, intent) {
@@ -620,7 +663,7 @@ export class Mech {
   phantomMaterial() {
     if (!this._phMat) this._phMat = this.ink
       ? inkPhantomMaterial(this.palette.armor || '#3cb4ae', this.shared)
-      : techPhantomMaterial(this.team === 0 ? '#3de0d0' : '#ff8a3d', this.shared);
+      : techPhantomMaterial((this.colorTeam ?? this.team) === 0 ? '#3de0d0' : '#ff8a3d', this.shared);
     return this._phMat;
   }
 

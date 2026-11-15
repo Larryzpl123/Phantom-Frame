@@ -67,7 +67,7 @@ export function buildArena(scene, renderer, key = 'grid') {
     };
   }
 
-  // pillars between the camera and the player fade out so they never hide the fight
+  // pillars between the camera and the player (or the locked target) fade out so they never hide the fight
   if (B.length) {
     const prev = arena.update;
     const a = new THREE.Vector3(), b = new THREE.Vector3();
@@ -75,9 +75,11 @@ export function buildArena(scene, renderer, key = 'grid') {
       prev && prev(dt, battle);
       if (!battle || !battle.camera || !battle.me) return;
       a.copy(battle.camera.position); b.copy(battle.me.pos);
+      const t = battle.target && !battle.target.dead ? battle.target.pos : null;
       for (const k of B) {
         if (!k.mesh || k.wall) continue;
-        const d = segPointDist2D(a.x, a.z, b.x, b.z, k.x, k.z);
+        let d = segPointDist2D(a.x, a.z, b.x, b.z, k.x, k.z);             // hiding me
+        if (t) d = Math.min(d, segPointDist2D(a.x, a.z, t.x, t.z, k.x, k.z));   // or hiding who I'm fighting
         const rr = (k.kind === 'cyl' ? k.r : Math.max(k.hx, k.hz)) + 0.8;
         const want = d < rr ? 0.22 : 1;
         k.fade = (k.fade ?? 1) + (want - (k.fade ?? 1)) * Math.min(1, dt * 8);
