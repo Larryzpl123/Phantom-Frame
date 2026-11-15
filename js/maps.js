@@ -48,6 +48,20 @@ export function buildArena(scene, renderer, key = 'grid') {
 
   for (const b of B) group.add(blockerMesh(b));
   if (B.length) {
+    // the camera never ends up behind a wall: it slides along the wall on the player's side (keeping its distance)
+    arena.clampCamera = (from, to) => {
+      for (const k of B) {
+        if (!k.wall || to.y > k.h) continue;
+        const m = 0.5;
+        if (k.hx < k.hz) {                                          // a wall running along z: keep x on the player's side
+          if (to.z < k.z - k.hz || to.z > k.z + k.hz) continue;
+          if (from.x < k.x) to.x = Math.min(to.x, k.x - k.hx - m); else to.x = Math.max(to.x, k.x + k.hx + m);
+        } else {
+          if (to.x < k.x - k.hx || to.x > k.x + k.hx) continue;
+          if (from.z < k.z) to.z = Math.min(to.z, k.z - k.hz - m); else to.z = Math.max(to.z, k.z + k.hz + m);
+        }
+      }
+    };
     arena.collide = (mechs) => collide(B, mechs);
     arena.steer = (m, move) => steer(B, m, move);
     arena.blocks = (p) => blocks(B, p);

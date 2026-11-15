@@ -255,9 +255,11 @@ export class Battle {
     const back = CFG.cam.dist + Math.min(6, dist * 0.08);
     const want = anchor.pos.clone().addScaledVector(to, -back).addScaledVector(right, CFG.cam.side);
     want.y = Math.max(anchor.pos.y, 0) + CFG.cam.height + Math.min(3, dist * 0.04);
+    if (this.arena.clampCamera) this.arena.clampCamera(anchor.pos, want);
     const look = anchor.pos.clone().setY(anchor.pos.y + 2.4).lerp(tgt.pos.clone().setY(tgt.pos.y + 2), CFG.cam.look);
     const k = 1 - Math.exp(-CFG.cam.lerp * dt);
     this.camPos.lerp(want, k); this.camLook.lerp(look, k);
+    if (this.arena.clampCamera) this.arena.clampCamera(anchor.pos, this.camPos);   // also mid-swing, not only the target
     this.camera.position.copy(this.camPos);
     if (this.combat.shake > 0) {
       const s = this.combat.shake * 0.35;
